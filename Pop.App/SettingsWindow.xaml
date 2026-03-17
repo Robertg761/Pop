@@ -1,0 +1,137 @@
+<Window x:Class="Pop.App.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Pop Settings"
+        Width="470"
+        Height="500"
+        Background="#0F172A"
+        WindowStartupLocation="CenterScreen">
+    <Border Margin="18"
+            Padding="22"
+            CornerRadius="20"
+            Background="#13203A"
+            BorderBrush="#294166"
+            BorderThickness="1">
+        <Grid>
+            <Grid.RowDefinitions>
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="Auto" />
+                <RowDefinition Height="*" />
+                <RowDefinition Height="Auto" />
+            </Grid.RowDefinitions>
+
+            <StackPanel Grid.Row="0" Margin="0,0,0,18">
+                <TextBlock FontSize="26"
+                           FontWeight="SemiBold"
+                           Foreground="#F8FAFC"
+                           Text="Pop" />
+                <TextBlock Margin="0,6,0,0"
+                           Foreground="#CBD5E1"
+                           TextWrapping="Wrap"
+                           Text="Tune how much speed a drag needs before Pop treats it like a flick throw and settles the window into a split tile." />
+            </StackPanel>
+
+            <CheckBox Grid.Row="1"
+                      Margin="0,0,0,12"
+                      Foreground="#E2E8F0"
+                      FontSize="15"
+                      IsChecked="{Binding Enabled}"
+                      Content="Enable Pop momentum snapping" />
+
+            <CheckBox Grid.Row="2"
+                      Margin="0,0,0,12"
+                      Foreground="#E2E8F0"
+                      FontSize="15"
+                      IsChecked="{Binding ShowOverlay}"
+                      Content="Show left/right target overlay while dragging" />
+
+            <CheckBox Grid.Row="3"
+                      Margin="0,0,0,20"
+                      Foreground="#E2E8F0"
+                      FontSize="15"
+                      IsChecked="{Binding LaunchAtStartup}"
+                      Content="Launch Pop when Windows starts" />
+
+            <Grid Grid.Row="4" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="145" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="#E2E8F0"
+                           Text="Throw velocity threshold (px/sec)" />
+                <TextBox Grid.Column="1"
+                         Margin="14,0,0,0"
+                         Padding="10,8"
+                         Background="#0B1220"
+                         BorderBrush="#35527B"
+                         BorderThickness="1"
+                         Foreground="#F8FAFC"
+                         Text="{Binding ThrowVelocityThresholdText, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+
+            <Grid Grid.Row="5" Margin="0,0,0,12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="145" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="#E2E8F0"
+                           Text="Horizontal dominance ratio" />
+                <TextBox Grid.Column="1"
+                         Margin="14,0,0,0"
+                         Padding="10,8"
+                         Background="#0B1220"
+                         BorderBrush="#35527B"
+                         BorderThickness="1"
+                         Foreground="#F8FAFC"
+                         Text="{Binding HorizontalDominanceRatioText, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+
+            <Grid Grid.Row="6" Margin="0,0,0,20" VerticalAlignment="Top">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="*" />
+                    <ColumnDefinition Width="145" />
+                </Grid.ColumnDefinitions>
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="#E2E8F0"
+                           Text="Glide duration (ms)" />
+                <TextBox Grid.Column="1"
+                         Margin="14,0,0,0"
+                         Padding="10,8"
+                         Background="#0B1220"
+                         BorderBrush="#35527B"
+                         BorderThickness="1"
+                         Foreground="#F8FAFC"
+                         Text="{Binding GlideDurationText, UpdateSourceTrigger=PropertyChanged}" />
+            </Grid>
+
+            <DockPanel Grid.Row="7" LastChildFill="False">
+                <TextBlock VerticalAlignment="Center"
+                           Foreground="#94A3B8"
+                           Text="Changes take effect immediately after saving." />
+                <Button DockPanel.Dock="Right"
+                        Width="92"
+                        Margin="12,0,0,0"
+                        Padding="0,10"
+                        Background="#F97316"
+                        BorderThickness="0"
+                        Click="SaveButton_OnClick"
+                        Content="Save"
+                        Foreground="White" />
+                <Button DockPanel.Dock="Right"
+                        Width="92"
+                        Padding="0,10"
+                        Background="#1E293B"
+                        BorderBrush="#334155"
+                        Click="CancelButton_OnClick"
+                        Content="Cancel"
+                        Foreground="#E2E8F0" />
+            </DockPanel>
+        </Grid>
+    </Border>
+</Window>
