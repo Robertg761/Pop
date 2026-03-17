@@ -6,4 +6,6 @@ namespace Pop.Core.Interfaces;
 public interface IWindowInspector
 {
     WindowInspectionResult InspectWindowAt(Point screenPoint);
+
+    MonitorInfo InspectMonitorAt(Point screenPoint);
 }

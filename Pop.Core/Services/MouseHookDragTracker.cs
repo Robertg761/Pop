@@ -115,6 +115,7 @@ public sealed class MouseHookDragTracker : IDragTracker
             return;
         }
 
+        RefreshActiveSessionMonitor(point);
         _activeSession.AddSample(new DragSample(point, timestamp));
         DragUpdated?.Invoke(this, new DragSessionEventArgs(_activeSession));
     }
@@ -126,8 +127,23 @@ public sealed class MouseHookDragTracker : IDragTracker
             return;
         }
 
+        RefreshActiveSessionMonitor(point);
         _activeSession.AddSample(new DragSample(point, timestamp));
         DragCompleted?.Invoke(this, new DragSessionCompletedEventArgs(_activeSession));
         _activeSession = null;
+    }
+
+    private void RefreshActiveSessionMonitor(System.Drawing.Point point)
+    {
+        if (_activeSession is null)
+        {
+            return;
+        }
+
+        var monitorInfo = _windowInspector.InspectMonitorAt(point);
+        if (monitorInfo != MonitorInfo.Empty)
+        {
+            _activeSession.MonitorInfo = monitorInfo;
+        }
     }
 }

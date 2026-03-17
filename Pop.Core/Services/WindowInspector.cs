@@ -31,6 +31,11 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
         return new WindowInspectionResult(windowHandle, bounds, monitorInfo, traits, eligibility);
     }
 
+    public MonitorInfo InspectMonitorAt(Point screenPoint)
+    {
+        return TryGetMonitorInfo(screenPoint);
+    }
+
     private static WindowInspectionResult CreateUnsupportedResult()
     {
         var traits = new WindowTraits(false, false, false, false, false, false, false, false, false, false);
@@ -45,6 +50,27 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
     private static MonitorInfo TryGetMonitorInfo(IntPtr windowHandle)
     {
         var monitorHandle = NativeMethods.MonitorFromWindow(windowHandle, NativeMethods.MonitorDefaultToNearest);
+        if (monitorHandle == IntPtr.Zero)
+        {
+            return MonitorInfo.Empty;
+        }
+
+        var monitorInfo = new NativeMethods.MonitorInfoEx
+        {
+            CbSize = System.Runtime.InteropServices.Marshal.SizeOf<NativeMethods.MonitorInfoEx>()
+        };
+
+        if (!NativeMethods.GetMonitorInfo(monitorHandle, ref monitorInfo))
+        {
+            return MonitorInfo.Empty;
+        }
+
+        return new MonitorInfo(monitorInfo.RcMonitor.ToRectangle(), monitorInfo.RcWork.ToRectangle());
+    }
+
+    private static MonitorInfo TryGetMonitorInfo(Point screenPoint)
+    {
+        var monitorHandle = NativeMethods.MonitorFromPoint(new NativeMethods.PointStruct(screenPoint.X, screenPoint.Y), NativeMethods.MonitorDefaultToNearest);
         if (monitorHandle == IntPtr.Zero)
         {
             return MonitorInfo.Empty;

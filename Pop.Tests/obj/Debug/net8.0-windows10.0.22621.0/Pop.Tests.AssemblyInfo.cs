@@ -19,7 +19,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Pop")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("0.1.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha+7062758ea542e9433046c464b154a018aa27a696")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("0.1.0-alpha+455b4a7bb4ba7eb4c91165acf6431fddb4acd9fb")]
 [assembly: System.Reflection.AssemblyProductAttribute("Pop")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Pop.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("0.1.0.0")]

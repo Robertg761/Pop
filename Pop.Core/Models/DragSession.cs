@@ -16,7 +16,7 @@ public sealed class DragSession
 
     public IntPtr WindowHandle { get; }
 
-    public MonitorInfo MonitorInfo { get; }
+    public MonitorInfo MonitorInfo { get; set; }
 
     public Rectangle InitialBounds { get; }
 
