@@ -40,9 +40,11 @@ Pop is now set up for installer-first releases:
 2. Run the installer and launch Pop from the Start menu or desktop shortcut.
 3. Open `Settings` from the tray icon to tune behavior and check update status.
 
-Installed builds check GitHub for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready.
+Installed builds check for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready.
 
-In-app updates only work from an installed GitHub release. Local `dotnet run` builds still run normally, but they show update controls as unavailable.
+The GitHub release page only needs to host `Setup.exe`. Velopack feed files stay in the repo's `update-feed` branch so installed builds can update without cluttering release assets.
+
+In-app updates only work from an installed `Setup.exe` build. Local `dotnet run` builds still run normally, but they show update controls as unavailable.
 
 ## Build From Source
 

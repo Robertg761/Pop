@@ -172,7 +172,7 @@ internal sealed class UpdateService : IUpdateService
         return new UpdateState(
             UpdateStatus.Idle,
             _updateClient.CurrentVersion,
-            "Ready to check GitHub for updates.",
+            "Ready to check for updates.",
             CanCheck: true,
             CanInstall: false);
     }
@@ -194,7 +194,7 @@ internal sealed class UpdateService : IUpdateService
         return new UpdateState(
             UpdateStatus.Checking,
             _updateClient.CurrentVersion,
-            "Checking GitHub for updates...",
+            "Checking for updates...",
             CanCheck: false,
             CanInstall: false);
     }

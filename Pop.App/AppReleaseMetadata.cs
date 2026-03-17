@@ -26,6 +26,8 @@ internal static class AppReleaseMetadata
 
     public static string VelopackVersion => GetMetadata("PopVelopackVersion") ?? "0.0.1298";
 
+    public static string UpdateFeedUrl => GetMetadata("PopUpdateFeedUrl") ?? "https://raw.githubusercontent.com/Robertg761/Pop/update-feed/win";
+
     private static string? GetMetadata(string key) =>
         Assembly
             .GetCustomAttributes<AssemblyMetadataAttribute>()

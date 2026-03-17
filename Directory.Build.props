@@ -16,6 +16,9 @@
     <PopVelopackPackId>Pop</PopVelopackPackId>
     <PopPublishRuntimeIdentifier>win-x64</PopPublishRuntimeIdentifier>
     <PopVelopackVersion>0.0.1298</PopVelopackVersion>
+    <PopUpdateFeedBranch>update-feed</PopUpdateFeedBranch>
+    <PopUpdateFeedPath>win</PopUpdateFeedPath>
+    <PopUpdateFeedUrl>https://raw.githubusercontent.com/Robertg761/Pop/update-feed/win</PopUpdateFeedUrl>
   </PropertyGroup>
 
   <ItemGroup>
@@ -38,6 +41,10 @@
     <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
       <_Parameter1>PopVelopackVersion</_Parameter1>
       <_Parameter2>$(PopVelopackVersion)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopUpdateFeedUrl</_Parameter1>
+      <_Parameter2>$(PopUpdateFeedUrl)</_Parameter2>
     </AssemblyAttribute>
   </ItemGroup>
 </Project>

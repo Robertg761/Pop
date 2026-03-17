@@ -8,7 +8,7 @@ internal sealed class VelopackUpdateClient : IUpdateClient
     private readonly UpdateManager _updateManager;
 
     public VelopackUpdateClient()
-        : this(new UpdateManager(new GithubSource(AppReleaseMetadata.RepositoryUrl, string.Empty, false), null, null))
+        : this(new UpdateManager(new SimpleWebSource(AppReleaseMetadata.UpdateFeedUrl, null, 3d), null, null))
     {
     }
 
@@ -21,7 +21,7 @@ internal sealed class VelopackUpdateClient : IUpdateClient
 
     public bool IsSupported => _updateManager.IsInstalled && !_updateManager.IsPortable;
 
-    public string UnsupportedReason => "Install Pop from an official GitHub release to enable in-app updates.";
+    public string UnsupportedReason => "Install Pop from the official Setup.exe release to enable in-app updates.";
 
     public string? PendingRestartVersion => AppReleaseMetadata.NormalizeVersion(_updateManager.UpdatePendingRestart?.Version?.ToString());
 

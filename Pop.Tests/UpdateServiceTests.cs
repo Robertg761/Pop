@@ -70,7 +70,7 @@ public sealed class UpdateServiceTests
         var client = new FakeUpdateClient
         {
             IsSupported = false,
-            UnsupportedReason = "Install Pop from an official GitHub release to enable in-app updates."
+            UnsupportedReason = "Install Pop from the official Setup.exe release to enable in-app updates."
         };
         using var service = new UpdateService(client, new FakeShutdownHandler(), TimeSpan.FromDays(1), TimeSpan.FromDays(1));
 

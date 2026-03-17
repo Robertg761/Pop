@@ -143,6 +143,8 @@ jobs:
             -getProperty:PopVelopackPackId `
             -getProperty:PopPublishRuntimeIdentifier `
             -getProperty:RepositoryUrl `
+            -getProperty:PopUpdateFeedBranch `
+            -getProperty:PopUpdateFeedPath `
             -getProperty:Product `
             -getProperty:Authors `
             .\Pop.App\Pop.App.csproj | ConvertFrom-Json
@@ -152,16 +154,10 @@ jobs:
           "pack_id=$($json.Properties.PopVelopackPackId)" >> $env:GITHUB_OUTPUT
           "runtime=$($json.Properties.PopPublishRuntimeIdentifier)" >> $env:GITHUB_OUTPUT
           "repo_url=$($json.Properties.RepositoryUrl)" >> $env:GITHUB_OUTPUT
+          "update_feed_branch=$($json.Properties.PopUpdateFeedBranch)" >> $env:GITHUB_OUTPUT
+          "update_feed_path=$($json.Properties.PopUpdateFeedPath)" >> $env:GITHUB_OUTPUT
           "product=$($json.Properties.Product)" >> $env:GITHUB_OUTPUT
           "authors=$($json.Properties.Authors)" >> $env:GITHUB_OUTPUT
-
-      - name: Check for previous release
-        id: releases
-        shell: pwsh
-        run: |
-          $existingReleaseTags = @(git ls-remote --tags origin "refs/tags/v*")
-          $hasRelease = $existingReleaseTags.Count -gt 0
-          "has_release=$($hasRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Install Velopack CLI
         shell: pwsh
@@ -189,18 +185,6 @@ jobs:
             --self-contained true `
             --output $publishDir
 
-      - name: Download previous release packages
-        if: ${{ steps.releases.outputs.has_release == 'true' }}
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          vpk download github `
-            --repoUrl "${{ steps.meta.outputs.repo_url }}" `
-            --token "$env:GITHUB_TOKEN" `
-            --channel win `
-            --outputDir .\artifacts\Releases
-
       - name: Pack installer
         shell: pwsh
         run: |
@@ -218,21 +202,98 @@ jobs:
 
           Get-ChildItem .\artifacts\Releases -Filter *-Portable.zip | Remove-Item -Force
 
-      - name: Upload release to GitHub
+      - name: Publish update feed
         shell: pwsh
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          vpk upload github `
-            --repoUrl "${{ steps.meta.outputs.repo_url }}" `
-            --token "$env:GITHUB_TOKEN" `
-            --channel win `
-            --outputDir .\artifacts\Releases `
-            --releaseName "Pop v${{ steps.meta.outputs.version }}" `
-            --tag "v${{ steps.meta.outputs.version }}" `
-            --targetCommitish "${{ github.sha }}" `
-            --merge `
-            --publish
+          $feedBranch = "${{ steps.meta.outputs.update_feed_branch }}"
+          $feedPath = "${{ steps.meta.outputs.update_feed_path }}"
+          $feedRoot = Join-Path $env:RUNNER_TEMP 'update-feed'
+          $feedRepoPrefix = "https://x-access-token:$env:GITHUB_TOKEN@github.com/"
+          $feedRepoUrl = "${{ steps.meta.outputs.repo_url }}" -replace '^https://github\.com/', $feedRepoPrefix
+          $feedFiles = @(Get-ChildItem .\artifacts\Releases -File | Where-Object { $_.Name -notlike '*-Setup.exe' -and $_.Name -ne 'assets.win.json' })
+
+          if ($feedFiles.Count -eq 0) {
+            throw 'Unable to find update-feed artifacts to publish.'
+          }
+
+          if (Test-Path $feedRoot) {
+            Remove-Item $feedRoot -Recurse -Force
+          }
+
+          git clone --branch $feedBranch --single-branch $feedRepoUrl $feedRoot *> $null
+          if ($LASTEXITCODE -ne 0) {
+            if (Test-Path $feedRoot) {
+              Remove-Item $feedRoot -Recurse -Force
+            }
+
+            New-Item -ItemType Directory -Path $feedRoot -Force | Out-Null
+            Push-Location $feedRoot
+            git init | Out-Null
+            git checkout --orphan $feedBranch | Out-Null
+            git remote add origin $feedRepoUrl
+            Pop-Location
+          }
+
+          $channelDir = Join-Path $feedRoot $feedPath
+          if (Test-Path $channelDir) {
+            Remove-Item $channelDir -Recurse -Force
+          }
+
+          New-Item -ItemType Directory -Path $channelDir -Force | Out-Null
+          foreach ($file in $feedFiles) {
+            Copy-Item $file.FullName (Join-Path $channelDir $file.Name) -Force
+          }
+
+          Push-Location $feedRoot
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add --all $feedPath
+          git diff --cached --quiet
+          if ($LASTEXITCODE -ne 0) {
+            git commit -m "Publish update feed for ${{ steps.meta.outputs.version }}" | Out-Null
+            git push origin $feedBranch | Out-Null
+          }
+          Pop-Location
+
+      - name: Upload Setup.exe to GitHub release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $releaseTag = "v${{ steps.meta.outputs.version }}"
+          $setupAsset = Get-ChildItem .\artifacts\Releases -Filter *-Setup.exe | Select-Object -First 1
+
+          if (-not $setupAsset) {
+            throw 'Unable to find the generated Setup.exe asset.'
+          }
+
+          gh release view $releaseTag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $createArgs = @(
+              'release', 'create', $releaseTag, $setupAsset.FullName,
+              '--repo', "${{ github.repository }}",
+              '--title', "Pop v${{ steps.meta.outputs.version }}",
+              '--target', "${{ github.sha }}"
+            )
+
+            if ("${{ steps.meta.outputs.version }}".Contains('-')) {
+              $createArgs += '--prerelease'
+            }
+
+            & gh @createArgs
+          }
+          else {
+            & gh release upload $releaseTag $setupAsset.FullName --repo "${{ github.repository }}" --clobber
+          }
+
+          $releaseData = gh release view $releaseTag --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
+          $assetsToDelete = @($releaseData.assets | Where-Object { $_.name -ne $setupAsset.Name })
+          foreach ($asset in $assetsToDelete) {
+            & gh release delete-asset $releaseTag $asset.name --repo "${{ github.repository }}" --yes
+          }
 
       - name: Upload release artifacts
         if: ${{ always() }}
