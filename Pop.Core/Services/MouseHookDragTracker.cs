@@ -9,13 +9,15 @@ namespace Pop.Core.Services;
 public sealed class MouseHookDragTracker : IDragTracker
 {
     private readonly IWindowInspector _windowInspector;
+    private readonly Func<bool> _isCtrlPressedAccessor;
     private readonly NativeMethods.LowLevelMouseProc _hookCallback;
     private IntPtr _hookHandle;
     private DragSession? _activeSession;
 
-    public MouseHookDragTracker(IWindowInspector windowInspector)
+    public MouseHookDragTracker(IWindowInspector windowInspector, Func<bool>? isCtrlPressedAccessor = null)
     {
         _windowInspector = windowInspector;
+        _isCtrlPressedAccessor = isCtrlPressedAccessor ?? IsCtrlPressed;
         _hookCallback = HookProcedure;
     }
 
@@ -129,8 +131,10 @@ public sealed class MouseHookDragTracker : IDragTracker
             return;
         }
 
-        _activeSession.AddSample(new DragSample(point, timestamp));
+        var releaseSample = new DragSample(point, timestamp);
+        _activeSession.AddSample(releaseSample);
         RefreshCurrentSessionState(_activeSession);
+        _activeSession.CompleteRelease(releaseSample, _isCtrlPressedAccessor());
         DragCompleted?.Invoke(this, new DragSessionCompletedEventArgs(_activeSession));
         _activeSession = null;
     }
@@ -147,5 +151,10 @@ public sealed class MouseHookDragTracker : IDragTracker
         {
             session.UpdateCurrentMonitorInfo(windowState.MonitorInfo);
         }
+    }
+
+    private static bool IsCtrlPressed()
+    {
+        return (NativeMethods.GetAsyncKeyState(NativeMethods.VkControl) & 0x8000) != 0;
     }
 }

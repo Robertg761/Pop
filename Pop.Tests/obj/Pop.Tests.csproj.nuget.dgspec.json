@@ -5,7 +5,7 @@
   },
   "projects": {
     "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.App\\Pop.App.csproj": {
-      "version": "0.2.0",
+      "version": "0.3.0",
       "restore": {
         "projectUniqueName": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.App\\Pop.App.csproj",
         "projectName": "Pop.App",
@@ -92,7 +92,7 @@
       }
     },
     "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Core\\Pop.Core.csproj": {
-      "version": "0.2.0",
+      "version": "0.3.0",
       "restore": {
         "projectUniqueName": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Core\\Pop.Core.csproj",
         "projectName": "Pop.Core",
@@ -166,7 +166,7 @@
       }
     },
     "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Tests\\Pop.Tests.csproj": {
-      "version": "0.2.0",
+      "version": "0.3.0",
       "restore": {
         "projectUniqueName": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Tests\\Pop.Tests.csproj",
         "projectName": "Pop.Tests",

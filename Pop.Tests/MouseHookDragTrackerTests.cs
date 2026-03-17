@@ -50,6 +50,30 @@ public sealed class MouseHookDragTrackerTests
         Assert.Equal(movedBounds, completedSession.CurrentBounds);
     }
 
+    [Fact]
+    public void DragSession_CapturesCtrlState_WhenReleased()
+    {
+        var startMonitor = new MonitorInfo(new Rectangle(0, 0, 1920, 1080), new Rectangle(0, 0, 1920, 1040));
+        var startPoint = new Point(100, 100);
+        var endPoint = new Point(400, 120);
+        var startBounds = new Rectangle(100, 100, 800, 600);
+        var endBounds = new Rectangle(300, 120, 800, 600);
+        var tracker = new MouseHookDragTracker(
+            new FakeWindowInspector(startPoint, startMonitor, startMonitor, startBounds, endBounds),
+            () => true);
+
+        DragSession? completedSession = null;
+        tracker.DragCompleted += (_, e) => completedSession = e.Session;
+
+        var origin = DateTimeOffset.UtcNow;
+        InvokePrivate(tracker, "HandleLeftButtonDown", startPoint, origin);
+        InvokePrivate(tracker, "HandleLeftButtonUp", endPoint, origin.AddMilliseconds(60));
+
+        Assert.NotNull(completedSession);
+        Assert.True(completedSession!.IsCtrlPressedAtRelease);
+        Assert.Equal(endPoint, completedSession.ReleaseSample?.Position);
+    }
+
     private static void InvokePrivate(object target, string methodName, Point point, DateTimeOffset timestamp)
     {
         var method = target.GetType().GetMethod(methodName, BindingFlags.Instance | BindingFlags.NonPublic);

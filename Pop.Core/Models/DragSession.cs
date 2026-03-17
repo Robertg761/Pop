@@ -28,6 +28,10 @@ public sealed class DragSession
 
     public SnapTarget CurrentPredictedTarget { get; set; }
 
+    public bool IsCtrlPressedAtRelease { get; private set; }
+
+    public DragSample? ReleaseSample { get; private set; }
+
     public ReadOnlyCollection<DragSample> Samples => _samples.AsReadOnly();
 
     public void AddSample(DragSample sample)
@@ -67,5 +71,11 @@ public sealed class DragSession
     public void UpdateCurrentBounds(Rectangle bounds)
     {
         CurrentBounds = bounds;
+    }
+
+    public void CompleteRelease(DragSample sample, bool isCtrlPressedAtRelease)
+    {
+        ReleaseSample = sample;
+        IsCtrlPressedAtRelease = isCtrlPressedAtRelease;
     }
 }

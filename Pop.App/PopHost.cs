@@ -40,7 +40,7 @@ public sealed class PopHost : IDisposable
         _startupRegistrationService = new StartupRegistrationService();
         _updateService = new UpdateService();
         _windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
-        _snapDecider = new SnapDecider();
+        _snapDecider = new SnapDecider(_windowInspector);
         _windowAnimator = new WindowAnimator();
 
         _dragTracker = new MouseHookDragTracker(_windowInspector);
@@ -171,11 +171,15 @@ public sealed class PopHost : IDisposable
                 "Release did not qualify for snapping.",
                 new Dictionary<string, string?>
                 {
+                    ["ctrlRelease"] = e.Session.IsCtrlPressedAtRelease.ToString(),
                     ["target"] = decision.Target.ToString(),
                     ["reason"] = decision.RejectionReason.ToString(),
                     ["velocityX"] = Math.Round(decision.HorizontalVelocityPxPerSec).ToString(),
                     ["velocityY"] = Math.Round(decision.VerticalVelocityPxPerSec).ToString(),
-                    ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00")
+                    ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00"),
+                    ["projectedLandingPoint"] = decision.ProjectedLandingPoint.ToString(),
+                    ["releaseMonitor"] = e.Session.CurrentMonitorInfo.WorkArea.ToString(),
+                    ["targetMonitor"] = decision.TargetMonitorInfo.WorkArea.ToString()
             });
             return;
         }
@@ -194,7 +198,9 @@ public sealed class PopHost : IDisposable
 
         RefreshSessionState(e.Session);
 
-        var activeMonitorInfo = e.Session.CurrentMonitorInfo;
+        var activeMonitorInfo = decision.TargetMonitorInfo != MonitorInfo.Empty
+            ? decision.TargetMonitorInfo
+            : e.Session.CurrentMonitorInfo;
         var visibleTileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, activeMonitorInfo);
         if (visibleTileBounds == Rectangle.Empty)
         {
@@ -215,11 +221,15 @@ public sealed class PopHost : IDisposable
             "Snap qualified and animation plan generated.",
             new Dictionary<string, string?>
             {
+                ["ctrlRelease"] = e.Session.IsCtrlPressedAtRelease.ToString(),
                 ["target"] = decision.Target.ToString(),
                 ["reason"] = decision.RejectionReason.ToString(),
                 ["velocityX"] = Math.Round(decision.HorizontalVelocityPxPerSec).ToString(),
                 ["velocityY"] = Math.Round(decision.VerticalVelocityPxPerSec).ToString(),
                 ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00"),
+                ["projectedLandingPoint"] = decision.ProjectedLandingPoint.ToString(),
+                ["releaseMonitor"] = e.Session.CurrentMonitorInfo.WorkArea.ToString(),
+                ["targetMonitor"] = activeMonitorInfo.WorkArea.ToString(),
                 ["frames"] = plan.Frames.Count.ToString(),
                 ["overshootPx"] = plan.MaxOvershootPx.ToString()
             });

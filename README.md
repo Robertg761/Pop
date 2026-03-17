@@ -8,6 +8,7 @@ Pop is a Windows tray app that adds momentum-based window snapping. Drag a windo
 - Watches for title-bar drag gestures using a global mouse hook.
 - Qualifies a snap based on horizontal release velocity and horizontal-vs-vertical motion dominance.
 - Animates eligible windows into the left or right half of the active monitor work area.
+- Lets you hold `Ctrl` on release to project the throw onto another monitor and snap there.
 - Lets you tune gesture sensitivity, animation duration, launch-at-startup behavior, and optional diagnostics logging.
 
 ## Current Behavior
@@ -16,6 +17,7 @@ Pop currently targets a focused v1 workflow:
 
 - Left-half and right-half snapping only.
 - Gesture must begin on a window title bar.
+- Holding `Ctrl` while releasing a drag enables cross-monitor throw targeting without adding extra settings.
 - Only standard top-level, visible, resizable desktop windows are eligible.
 - Minimized, maximized, fullscreen, cloaked, elevated, and Pop-owned windows are ignored.
 
@@ -69,6 +71,7 @@ When the app starts, it lives in the system tray. Double-click the tray icon or 
 2. Click and hold a supported window's title bar.
 3. Drag and release with a fast horizontal flick.
 4. Pop snaps the window to the left or right half of the current monitor.
+5. Hold `Ctrl` at release to throw across monitors, including stacked monitors above or below. Fast throws use the landing side on the destination monitor; slower cross-monitor throws prefer the edge closest to the monitor they came from.
 
 If the release is too slow or too vertical, the window is left alone.
 

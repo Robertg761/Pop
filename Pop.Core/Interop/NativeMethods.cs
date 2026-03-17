@@ -11,6 +11,7 @@ internal static class NativeMethods
     public const int WmLButtonUp = 0x0202;
     public const int WmNcHitTest = 0x0084;
     public const int HtCaption = 2;
+    public const int VkControl = 0x11;
     public const uint GaRoot = 2;
     public const int GwlStyle = -16;
     public const int GwlExStyle = -20;
@@ -124,6 +125,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern IntPtr MonitorFromPoint(PointStruct pt, uint dwFlags);
+
+    [DllImport("user32.dll")]
+    public static extern short GetAsyncKeyState(int vKey);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     [return: MarshalAs(UnmanagedType.Bool)]
