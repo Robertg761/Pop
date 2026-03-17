@@ -9,13 +9,14 @@ namespace Pop.Tests;
 public sealed class MouseHookDragTrackerTests
 {
     [Fact]
-    public void DragSession_MonitorInfo_FollowsTheCurrentScreenDuringDrag()
+    public void DragSession_CurrentMonitorInfo_FollowsTheWindowCenterDuringDrag()
     {
         var startMonitor = new MonitorInfo(new Rectangle(0, 0, 1920, 1080), new Rectangle(0, 0, 1920, 1040));
         var secondMonitor = new MonitorInfo(new Rectangle(1920, 0, 1920, 1080), new Rectangle(1920, 0, 1920, 1040));
         var startPoint = new Point(100, 100);
         var movedPoint = new Point(2200, 120);
-        var tracker = new MouseHookDragTracker(new FakeWindowInspector(startPoint, movedPoint, startMonitor, secondMonitor));
+        var currentMonitorPoint = new Point(2600, 420);
+        var tracker = new MouseHookDragTracker(new FakeWindowInspector(startPoint, currentMonitorPoint, startMonitor, secondMonitor));
 
         DragSession? startedSession = null;
         DragSession? completedSession = null;
@@ -30,16 +31,19 @@ public sealed class MouseHookDragTrackerTests
         InvokePrivate(tracker, "HandleLeftButtonDown", startPoint, origin);
         Assert.NotNull(startedSession);
         Assert.Equal(startMonitor, startedSession!.MonitorInfo);
+        Assert.Equal(startMonitor, startedSession.CurrentMonitorInfo);
 
         InvokePrivate(tracker, "HandleMouseMove", movedPoint, origin.AddMilliseconds(40));
         Assert.NotNull(updatedSession);
         Assert.Same(startedSession, updatedSession);
-        Assert.Equal(secondMonitor, updatedSession!.MonitorInfo);
+        Assert.Equal(startMonitor, updatedSession!.MonitorInfo);
+        Assert.Equal(secondMonitor, updatedSession.CurrentMonitorInfo);
 
         InvokePrivate(tracker, "HandleLeftButtonUp", movedPoint, origin.AddMilliseconds(80));
         Assert.NotNull(completedSession);
         Assert.Same(startedSession, completedSession);
-        Assert.Equal(secondMonitor, completedSession!.MonitorInfo);
+        Assert.Equal(startMonitor, completedSession!.MonitorInfo);
+        Assert.Equal(secondMonitor, completedSession.CurrentMonitorInfo);
     }
 
     private static void InvokePrivate(object target, string methodName, Point point, DateTimeOffset timestamp)
@@ -58,11 +62,11 @@ public sealed class MouseHookDragTrackerTests
         private readonly Dictionary<Point, WindowInspectionResult> _windowInspections = new();
         private readonly Dictionary<Point, MonitorInfo> _monitorInspections = new();
 
-        public FakeWindowInspector(Point startPoint, Point movedPoint, MonitorInfo startMonitor, MonitorInfo movedMonitor)
+        public FakeWindowInspector(Point startPoint, Point currentMonitorPoint, MonitorInfo startMonitor, MonitorInfo movedMonitor)
         {
             _windowInspections[startPoint] = CreateSupportedInspection(startMonitor);
             _monitorInspections[startPoint] = startMonitor;
-            _monitorInspections[movedPoint] = movedMonitor;
+            _monitorInspections[currentMonitorPoint] = movedMonitor;
         }
 
         public WindowInspectionResult InspectWindowAt(Point screenPoint)

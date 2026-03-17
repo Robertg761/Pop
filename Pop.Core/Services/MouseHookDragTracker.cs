@@ -1,3 +1,4 @@
+using System.Drawing;
 using Pop.Core.Events;
 using Pop.Core.Interfaces;
 using Pop.Core.Interop;
@@ -104,6 +105,7 @@ public sealed class MouseHookDragTracker : IDragTracker
 
         var session = new DragSession(inspection.WindowHandle, inspection.MonitorInfo, inspection.Bounds);
         session.AddSample(new DragSample(point, timestamp));
+        RefreshCurrentSessionMonitor(session);
         _activeSession = session;
         DragStarted?.Invoke(this, new DragSessionEventArgs(session));
     }
@@ -115,8 +117,8 @@ public sealed class MouseHookDragTracker : IDragTracker
             return;
         }
 
-        RefreshActiveSessionMonitor(point);
         _activeSession.AddSample(new DragSample(point, timestamp));
+        RefreshCurrentSessionMonitor(_activeSession);
         DragUpdated?.Invoke(this, new DragSessionEventArgs(_activeSession));
     }
 
@@ -127,23 +129,28 @@ public sealed class MouseHookDragTracker : IDragTracker
             return;
         }
 
-        RefreshActiveSessionMonitor(point);
         _activeSession.AddSample(new DragSample(point, timestamp));
+        RefreshCurrentSessionMonitor(_activeSession);
         DragCompleted?.Invoke(this, new DragSessionCompletedEventArgs(_activeSession));
         _activeSession = null;
     }
 
-    private void RefreshActiveSessionMonitor(System.Drawing.Point point)
+    private void RefreshCurrentSessionMonitor(DragSession session)
     {
-        if (_activeSession is null)
+        var estimatedBounds = session.GetCurrentBoundsEstimate();
+        if (estimatedBounds == Rectangle.Empty)
         {
             return;
         }
 
-        var monitorInfo = _windowInspector.InspectMonitorAt(point);
+        var probePoint = new System.Drawing.Point(
+            estimatedBounds.Left + (estimatedBounds.Width / 2),
+            estimatedBounds.Top + (estimatedBounds.Height / 2));
+
+        var monitorInfo = _windowInspector.InspectMonitorAt(probePoint);
         if (monitorInfo != MonitorInfo.Empty)
         {
-            _activeSession.MonitorInfo = monitorInfo;
+            session.UpdateCurrentMonitorInfo(monitorInfo);
         }
     }
 }

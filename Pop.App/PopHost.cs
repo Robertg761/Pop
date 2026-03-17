@@ -179,8 +179,7 @@ public sealed class PopHost : IDisposable
             return;
         }
 
-        // The tracker keeps the session monitor synced to the cursor's current screen.
-        var activeMonitorInfo = e.Session.MonitorInfo;
+        var activeMonitorInfo = e.Session.CurrentMonitorInfo;
         var visibleTileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, activeMonitorInfo);
         if (visibleTileBounds == Rectangle.Empty)
         {

@@ -11,12 +11,15 @@ public sealed class DragSession
     {
         WindowHandle = windowHandle;
         MonitorInfo = monitorInfo;
+        CurrentMonitorInfo = monitorInfo;
         InitialBounds = initialBounds;
     }
 
     public IntPtr WindowHandle { get; }
 
-    public MonitorInfo MonitorInfo { get; set; }
+    public MonitorInfo MonitorInfo { get; }
+
+    public MonitorInfo CurrentMonitorInfo { get; private set; }
 
     public Rectangle InitialBounds { get; }
 
@@ -51,5 +54,10 @@ public sealed class DragSession
             InitialBounds.Y + deltaY,
             InitialBounds.Width,
             InitialBounds.Height);
+    }
+
+    public void UpdateCurrentMonitorInfo(MonitorInfo monitorInfo)
+    {
+        CurrentMonitorInfo = monitorInfo;
     }
 }
