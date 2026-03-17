@@ -144,11 +144,13 @@ public sealed class PopHost : IDisposable
             return;
         }
 
-        var tileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, e.Session.MonitorInfo);
-        if (tileBounds == Rectangle.Empty)
+        var visibleTileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, e.Session.MonitorInfo);
+        if (visibleTileBounds == Rectangle.Empty)
         {
             return;
         }
+
+        var tileBounds = WindowSnapBoundsCalculator.GetSnapBounds(e.Session.WindowHandle, visibleTileBounds);
 
         e.Session.CurrentPredictedTarget = decision.Target;
         var plan = _windowAnimator.CreatePlan(

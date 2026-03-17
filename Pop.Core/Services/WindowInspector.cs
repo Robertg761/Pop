@@ -116,7 +116,7 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
     {
         try
         {
-            return NativeMethods.DwmGetWindowAttribute(windowHandle, NativeMethods.DwmwaCloaked, out var cloaked, sizeof(int)) == 0 &&
+            return NativeMethods.DwmGetWindowAttribute(windowHandle, NativeMethods.DwmwaCloaked, out int cloaked, sizeof(int)) == 0 &&
                    cloaked != 0;
         }
         catch

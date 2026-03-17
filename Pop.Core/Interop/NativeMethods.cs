@@ -20,6 +20,7 @@ internal static class NativeMethods
     public const long WsExAppWindow = 0x00040000L;
     public const uint MonitorDefaultToNearest = 2;
     public const uint GwOwner = 4;
+    public const int DwmwaExtendedFrameBounds = 9;
     public const int DwmwaCloaked = 14;
     public const uint ProcessQueryLimitedInformation = 0x1000;
     public const uint TokenQuery = 0x0008;
@@ -149,6 +150,9 @@ internal static class NativeMethods
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out int pvAttribute, int cbAttribute);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmGetWindowAttribute(IntPtr hwnd, int dwAttribute, out RectStruct pvAttribute, int cbAttribute);
 
     public static IntPtr PackScreenPoint(Point point)
     {

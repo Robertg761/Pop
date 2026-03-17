@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Pop.App")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+11dc4c3f65b88b8dd8c68f88d317f159e6e3dacd")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4e5da9740ca723bb6e4935f11ac21a3f3491adf")]
 [assembly: System.Reflection.AssemblyProductAttribute("Pop.App")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Pop.App")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
