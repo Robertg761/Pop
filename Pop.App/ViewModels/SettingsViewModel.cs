@@ -8,7 +8,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
 {
     private bool _enabled;
     private bool _launchAtStartup;
-    private bool _showOverlay;
     private bool _enableDiagnostics;
     private string _throwVelocityThresholdText = string.Empty;
     private string _horizontalDominanceRatioText = string.Empty;
@@ -26,12 +25,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         get => _launchAtStartup;
         set => SetField(ref _launchAtStartup, value);
-    }
-
-    public bool ShowOverlay
-    {
-        get => _showOverlay;
-        set => SetField(ref _showOverlay, value);
     }
 
     public bool EnableDiagnostics
@@ -69,7 +62,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
     {
         Enabled = settings.Enabled;
         LaunchAtStartup = settings.LaunchAtStartup;
-        ShowOverlay = settings.ShowOverlay;
         EnableDiagnostics = settings.EnableDiagnostics;
         ThrowVelocityThresholdText = settings.ThrowVelocityThresholdPxPerSec.ToString("0.##");
         HorizontalDominanceRatioText = settings.HorizontalDominanceRatio.ToString("0.##");
@@ -103,7 +95,6 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         {
             Enabled = Enabled,
             LaunchAtStartup = LaunchAtStartup,
-            ShowOverlay = ShowOverlay,
             EnableDiagnostics = EnableDiagnostics,
             ThrowVelocityThresholdPxPerSec = throwVelocity,
             HorizontalDominanceRatio = dominanceRatio,

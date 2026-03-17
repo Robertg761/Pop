@@ -8,7 +8,7 @@
         MinHeight="670"
         Background="#08111F"
         WindowStartupLocation="CenterScreen">
-    <Window.Resources>
+        <Window.Resources>
         <Style x:Key="SectionBorderStyle" TargetType="Border">
             <Setter Property="Margin" Value="0,0,0,16" />
             <Setter Property="Padding" Value="18" />
@@ -107,7 +107,7 @@
                                    Text="Behavior" />
                         <TextBlock Margin="0,6,0,18"
                                    Style="{StaticResource SectionBodyStyle}"
-                                   Text="These controls keep the feature easy to live with day to day. The gesture itself stays the same; you are only toggling when and how Pop participates." />
+                                   Text="These controls keep the feature easy to live with day to day. The gesture itself stays the same; you are only toggling whether Pop participates and how it starts up." />
 
                         <StackPanel Margin="0,0,0,14">
                             <CheckBox Style="{StaticResource BodyCheckboxStyle}"
@@ -116,15 +116,6 @@
                             <TextBlock Margin="28,0,0,0"
                                        Style="{StaticResource SectionBodyStyle}"
                                        Text="Leave standard window dragging untouched until a fast horizontal release qualifies as a throw." />
-                        </StackPanel>
-
-                        <StackPanel Margin="0,0,0,14">
-                            <CheckBox Style="{StaticResource BodyCheckboxStyle}"
-                                      IsChecked="{Binding ShowOverlay}"
-                                      Content="Show the left/right target preview while dragging" />
-                            <TextBlock Margin="28,0,0,0"
-                                       Style="{StaticResource SectionBodyStyle}"
-                                       Text="Keep the overlay subtle and helpful instead of noisy while you’re lining up a throw." />
                         </StackPanel>
 
                         <StackPanel>
@@ -220,7 +211,7 @@
                                    Text="Advanced" />
                         <TextBlock Margin="0,6,0,18"
                                    Style="{StaticResource SectionBodyStyle}"
-                                   Text="Diagnostics help tune thresholds and inspect unsupported-window cases. They stay local to this PC and do not change the feature’s behavior." />
+                                   Text="Diagnostics help tune thresholds and inspect unsupported-window cases. They stay local to this PC and do not change throw-and-snap behavior." />
 
                         <StackPanel>
                             <CheckBox Style="{StaticResource BodyCheckboxStyle}"

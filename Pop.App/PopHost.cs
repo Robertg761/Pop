@@ -16,14 +16,11 @@ public sealed class PopHost : IDisposable
     private readonly IDragTracker _dragTracker;
     private readonly ISnapDecider _snapDecider;
     private readonly IWindowAnimator _windowAnimator;
-    private readonly WpfOverlayPresenter _overlayPresenter;
-    private readonly OverlayStateTracker _overlayStateTracker = new();
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Forms.ToolStripMenuItem _enabledMenuItem;
     private readonly Forms.ToolStripMenuItem _launchAtStartupMenuItem;
-    private readonly Forms.ToolStripMenuItem _overlayMenuItem;
 
     private AppSettings _settings = new();
     private SettingsWindow? _settingsWindow;
@@ -34,7 +31,6 @@ public sealed class PopHost : IDisposable
         _startupRegistrationService = new StartupRegistrationService();
         _snapDecider = new SnapDecider();
         _windowAnimator = new WindowAnimator();
-        _overlayPresenter = new WpfOverlayPresenter(Application.Current.Dispatcher);
 
         var windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
         _dragTracker = new MouseHookDragTracker(windowInspector);
@@ -44,7 +40,6 @@ public sealed class PopHost : IDisposable
         _dragTracker.DragCompleted += OnDragCompleted;
 
         _enabledMenuItem = new Forms.ToolStripMenuItem("Enable Pop", null, async (_, _) => await ToggleEnabledAsync());
-        _overlayMenuItem = new Forms.ToolStripMenuItem("Show Overlay", null, async (_, _) => await ToggleOverlayAsync());
         _launchAtStartupMenuItem = new Forms.ToolStripMenuItem("Launch At Startup", null, async (_, _) => await ToggleLaunchAtStartupAsync());
 
         var openSettingsMenuItem = new Forms.ToolStripMenuItem("Open Settings", null, (_, _) => OpenSettingsWindow());
@@ -54,7 +49,6 @@ public sealed class PopHost : IDisposable
         contextMenu.Items.AddRange(
         [
             _enabledMenuItem,
-            _overlayMenuItem,
             _launchAtStartupMenuItem,
             new Forms.ToolStripSeparator(),
             openSettingsMenuItem,
@@ -90,8 +84,6 @@ public sealed class PopHost : IDisposable
         _dragTracker.DragUpdated -= OnDragUpdated;
         _dragTracker.DragCompleted -= OnDragCompleted;
         _dragTracker.Dispose();
-
-        _overlayPresenter.Dispose();
         _diagnosticsLogService.Dispose();
 
         if (_settingsWindow is not null)
@@ -109,7 +101,6 @@ public sealed class PopHost : IDisposable
     private void OnDragStarted(object? sender, DragSessionEventArgs e)
     {
         e.Session.CurrentPredictedTarget = SnapTarget.None;
-        ApplyOverlayTransition(_overlayStateTracker.Reset());
 
         LogDiagnostics("drag-start", "Started tracking a potential throw.", new Dictionary<string, string?>
         {
@@ -122,19 +113,15 @@ public sealed class PopHost : IDisposable
     {
         if (!_settings.Enabled)
         {
-            ApplyOverlayTransition(_overlayStateTracker.Reset());
             return;
         }
 
         var decision = _snapDecider.Decide(e.Session, _settings);
         e.Session.CurrentPredictedTarget = decision.Target;
-        ApplyOverlayTransition(_overlayStateTracker.Evaluate(decision, e.Session.MonitorInfo, _settings.ShowOverlay));
     }
 
     private async void OnDragCompleted(object? sender, DragSessionCompletedEventArgs e)
     {
-        ApplyOverlayTransition(_overlayStateTracker.Reset());
-
         if (!_settings.Enabled)
         {
             return;
@@ -216,11 +203,6 @@ public sealed class PopHost : IDisposable
         await ApplySettingsAsync(_settings with { Enabled = !_settings.Enabled });
     }
 
-    private async Task ToggleOverlayAsync()
-    {
-        await ApplySettingsAsync(_settings with { ShowOverlay = !_settings.ShowOverlay });
-    }
-
     private async Task ToggleLaunchAtStartupAsync()
     {
         await ApplySettingsAsync(_settings with { LaunchAtStartup = !_settings.LaunchAtStartup });
@@ -236,8 +218,6 @@ public sealed class PopHost : IDisposable
 
     private void OnDragRejected(object? sender, DragSessionRejectedEventArgs e)
     {
-        ApplyOverlayTransition(_overlayStateTracker.Reset());
-
         LogDiagnostics(
             "drag-ignored",
             "Pointer down did not start a Pop drag session.",
@@ -252,22 +232,8 @@ public sealed class PopHost : IDisposable
     private void UpdateMenuState()
     {
         _enabledMenuItem.Checked = _settings.Enabled;
-        _overlayMenuItem.Checked = _settings.ShowOverlay;
         _launchAtStartupMenuItem.Checked = _settings.LaunchAtStartup;
         _notifyIcon.Text = _settings.Enabled ? "Pop - Enabled" : "Pop - Disabled";
-    }
-
-    private void ApplyOverlayTransition(OverlayTransition transition)
-    {
-        switch (transition.Action)
-        {
-            case OverlayTransitionAction.ShowOrUpdate:
-                _overlayPresenter.Update(transition.Target, transition.Bounds);
-                break;
-            case OverlayTransitionAction.Hide:
-                _overlayPresenter.Hide();
-                break;
-        }
     }
 
     private void LogDiagnostics(string category, string message, IReadOnlyDictionary<string, string?>? fields = null)

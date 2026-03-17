@@ -9,3 +9,15 @@ G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\bin\Debug\net8.0-wind
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\bin\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\bin\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\obj\Debug\net8.0-windows10.0.22621.0\ref\Pop.Core.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build\Debug\net8.0-windows10.0.22621.0\Pop.Core.deps.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild\Debug\net8.0-windows10.0.22621.0\Pop.Core.deps.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.deps.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\build-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.deps.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Core\.artifacts\testbuild-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
