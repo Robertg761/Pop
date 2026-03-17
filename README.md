@@ -71,7 +71,7 @@ When the app starts, it lives in the system tray. Double-click the tray icon or 
 2. Click and hold a supported window's title bar.
 3. Drag and release with a fast horizontal flick.
 4. Pop snaps the window to the left or right half of the current monitor.
-5. Hold `Ctrl` at release to throw across monitors. Fast throws use the landing side on the destination monitor; slower cross-monitor throws prefer the edge closest to the monitor they came from.
+5. Hold `Ctrl` at release to throw across monitors, including stacked monitors above or below. Fast throws use the landing side on the destination monitor; slower cross-monitor throws prefer the edge closest to the monitor they came from.
 
 If the release is too slow or too vertical, the window is left alone.
 

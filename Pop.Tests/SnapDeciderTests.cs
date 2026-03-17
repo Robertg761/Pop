@@ -160,6 +160,28 @@ public sealed class SnapDeciderTests
     }
 
     [Fact]
+    public void Decide_WithCtrl_VerticalThrowToStackedMonitor_UsesDominantAxisSpeed()
+    {
+        var decider = CreateDecider(MainMonitor, TopMonitor);
+        var session = CreateSession(
+            MainMonitor,
+            MainMonitor,
+            new Rectangle(1000, 50, 800, 600),
+            true,
+            (0, 0, 0),
+            (15, -200, 100));
+
+        var decision = decider.Decide(session, TestSettings);
+
+        Assert.True(decision.IsQualified);
+        Assert.Equal(TopMonitor, decision.TargetMonitorInfo);
+        Assert.Equal(SnapTarget.RightHalf, decision.Target);
+        Assert.InRange(decision.ProjectedLandingPoint.X, TopMonitor.Bounds.Left, TopMonitor.Bounds.Right - 1);
+        Assert.InRange(decision.ProjectedLandingPoint.Y, TopMonitor.Bounds.Top, TopMonitor.Bounds.Bottom - 1);
+        Assert.True(decision.ProjectedLandingPoint.X > TopMonitor.WorkArea.Left + (TopMonitor.WorkArea.Width / 2));
+    }
+
+    [Fact]
     public void Decide_WithCtrl_StackedMonitorFallsBackToLandingX()
     {
         var decider = CreateDecider(MainMonitor, TopMonitor);
@@ -177,6 +199,26 @@ public sealed class SnapDeciderTests
         Assert.Equal(TopMonitor, decision.TargetMonitorInfo);
         Assert.Equal(SnapTarget.RightHalf, decision.Target);
         Assert.True(decision.ProjectedLandingPoint.Y < MainMonitor.Bounds.Top);
+    }
+
+    [Fact]
+    public void Decide_WithCtrl_DownwardThrowFromTopMonitor_UsesLowerMonitor()
+    {
+        var decider = CreateDecider(TopMonitor, MainMonitor);
+        var session = CreateSession(
+            TopMonitor,
+            TopMonitor,
+            new Rectangle(1000, -700, 800, 600),
+            true,
+            (0, 0, 0),
+            (12, 40, 100));
+
+        var decision = decider.Decide(session, TestSettings);
+
+        Assert.True(decision.IsQualified);
+        Assert.Equal(MainMonitor, decision.TargetMonitorInfo);
+        Assert.Equal(SnapTarget.RightHalf, decision.Target);
+        Assert.True(decision.ProjectedLandingPoint.Y < MainMonitor.Bounds.Bottom);
     }
 
     private static SnapDecider CreateDecider(params MonitorInfo[] monitors)

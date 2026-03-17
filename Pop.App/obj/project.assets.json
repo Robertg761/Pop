@@ -31,7 +31,7 @@
           }
         }
       },
-      "Pop.Core/0.2.0": {
+      "Pop.Core/0.3.0": {
         "type": "project",
         "framework": ".NETCoreApp,Version=v8.0",
         "compile": {
@@ -84,7 +84,7 @@
         "velopack.nuspec"
       ]
     },
-    "Pop.Core/0.2.0": {
+    "Pop.Core/0.3.0": {
       "type": "project",
       "path": "../Pop.Core/Pop.Core.csproj",
       "msbuildProject": "../Pop.Core/Pop.Core.csproj"
@@ -92,7 +92,7 @@
   },
   "projectFileDependencyGroups": {
     "net8.0-windows10.0.22621": [
-      "Pop.Core >= 0.2.0",
+      "Pop.Core >= 0.3.0",
       "Velopack >= 0.0.1298"
     ]
   },
@@ -101,7 +101,7 @@
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
-    "version": "0.2.0",
+    "version": "0.3.0",
     "restore": {
       "projectUniqueName": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.App\\Pop.App.csproj",
       "projectName": "Pop.App",

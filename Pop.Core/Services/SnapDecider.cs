@@ -115,30 +115,25 @@ public sealed class SnapDecider(IWindowInspector windowInspector) : ISnapDecider
 
     private SnapDecision DecideWithCtrl(DragSession session, AppSettings settings, SnapDecision metrics)
     {
-        var absHorizontal = Math.Abs(metrics.HorizontalVelocityPxPerSec);
-        if (absHorizontal < CtrlCrossMonitorVelocityThresholdPxPerSec)
+        var dominantAxisVelocity = GetDominantAxisVelocity(metrics);
+        if (dominantAxisVelocity < CtrlCrossMonitorVelocityThresholdPxPerSec)
         {
             return metrics with { RejectionReason = SnapRejectionReason.InsufficientVelocity };
         }
 
-        if (metrics.HorizontalDominanceRatio < settings.HorizontalDominanceRatio)
+        if (GetDominantAxisDominanceRatio(metrics) < settings.HorizontalDominanceRatio)
         {
             return metrics with { RejectionReason = SnapRejectionReason.InsufficientHorizontalDominance };
         }
 
         var projectedLandingPoint = ProjectLandingPoint(session, metrics);
-        var targetMonitor = _windowInspector.InspectMonitorAt(projectedLandingPoint);
-        if (targetMonitor == MonitorInfo.Empty)
-        {
-            targetMonitor = session.CurrentMonitorInfo;
-        }
-
         var releaseMonitor = session.CurrentMonitorInfo;
-        var target = targetMonitor == releaseMonitor || absHorizontal >= settings.ThrowVelocityThresholdPxPerSec
+        var targetMonitor = ResolveCtrlTargetMonitor(releaseMonitor, projectedLandingPoint, metrics);
+        var target = targetMonitor == releaseMonitor || dominantAxisVelocity >= settings.ThrowVelocityThresholdPxPerSec
             ? DetermineTargetFromLandingX(projectedLandingPoint.X, targetMonitor)
             : DetermineTargetForSlowCrossMonitorThrow(releaseMonitor, targetMonitor, projectedLandingPoint);
 
-        if (targetMonitor == releaseMonitor && absHorizontal < settings.ThrowVelocityThresholdPxPerSec)
+        if (targetMonitor == releaseMonitor && dominantAxisVelocity < settings.ThrowVelocityThresholdPxPerSec)
         {
             return metrics with
             {
@@ -156,6 +151,68 @@ public sealed class SnapDecider(IWindowInspector windowInspector) : ISnapDecider
             IsQualified = true,
             RejectionReason = SnapRejectionReason.None
         };
+    }
+
+    private MonitorInfo ResolveCtrlTargetMonitor(MonitorInfo releaseMonitor, Point projectedLandingPoint, SnapDecision metrics)
+    {
+        var targetMonitor = _windowInspector.InspectMonitorAt(projectedLandingPoint);
+        if (targetMonitor != MonitorInfo.Empty && targetMonitor != releaseMonitor)
+        {
+            return targetMonitor;
+        }
+
+        var probePoint = CreateDirectionalProbePoint(releaseMonitor, projectedLandingPoint, metrics);
+        if (probePoint.HasValue)
+        {
+            targetMonitor = _windowInspector.InspectMonitorAt(probePoint.Value);
+            if (targetMonitor != MonitorInfo.Empty && targetMonitor != releaseMonitor)
+            {
+                return targetMonitor;
+            }
+        }
+
+        return targetMonitor == MonitorInfo.Empty ? releaseMonitor : targetMonitor;
+    }
+
+    private static double GetDominantAxisVelocity(SnapDecision metrics)
+    {
+        return Math.Max(Math.Abs(metrics.HorizontalVelocityPxPerSec), Math.Abs(metrics.VerticalVelocityPxPerSec));
+    }
+
+    private static double GetDominantAxisDominanceRatio(SnapDecision metrics)
+    {
+        var absHorizontal = Math.Abs(metrics.HorizontalVelocityPxPerSec);
+        var absVertical = Math.Abs(metrics.VerticalVelocityPxPerSec);
+        var dominantAxis = Math.Max(absHorizontal, absVertical);
+        var secondaryAxis = Math.Max(1d, Math.Min(absHorizontal, absVertical));
+
+        return dominantAxis / secondaryAxis;
+    }
+
+    private static Point? CreateDirectionalProbePoint(MonitorInfo releaseMonitor, Point projectedLandingPoint, SnapDecision metrics)
+    {
+        var absHorizontal = Math.Abs(metrics.HorizontalVelocityPxPerSec);
+        var absVertical = Math.Abs(metrics.VerticalVelocityPxPerSec);
+
+        if (absVertical > absHorizontal)
+        {
+            var probeY = metrics.VerticalVelocityPxPerSec < 0
+                ? releaseMonitor.Bounds.Top - 1
+                : releaseMonitor.Bounds.Bottom + 1;
+
+            return new Point(projectedLandingPoint.X, probeY);
+        }
+
+        if (absHorizontal > absVertical)
+        {
+            var probeX = metrics.HorizontalVelocityPxPerSec < 0
+                ? releaseMonitor.Bounds.Left - 1
+                : releaseMonitor.Bounds.Right + 1;
+
+            return new Point(probeX, projectedLandingPoint.Y);
+        }
+
+        return null;
     }
 
     private static Point ProjectLandingPoint(DragSession session, SnapDecision metrics)
