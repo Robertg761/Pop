@@ -5,7 +5,7 @@ namespace Pop.Core.Interfaces;
 
 public interface IOverlayPresenter
 {
-    void Show(SnapTarget target, Rectangle bounds);
+    void Update(SnapTarget target, Rectangle bounds);
 
     void Hide();
 }

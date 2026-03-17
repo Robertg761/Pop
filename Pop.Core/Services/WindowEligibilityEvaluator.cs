@@ -8,54 +8,54 @@ public sealed class WindowEligibilityEvaluator
     {
         if (!traits.IsCaptionHit)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotTitleBar);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotTitleBar, "Pointer was not over a title bar.");
         }
 
         if (!traits.IsVisible)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotVisible);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotVisible, "Window is not visible.");
         }
 
         if (traits.IsCurrentProcessWindow)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.CurrentProcessWindow);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.CurrentProcessWindow, "Pop ignores its own windows.");
         }
 
         if (!traits.IsStandardTopLevelWindow)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotTopLevelDesktopWindow);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotTopLevelDesktopWindow, "Window is not a standard top-level desktop window.");
         }
 
         if (!traits.IsResizable)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotResizable);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.NotResizable, "Window does not expose a resizable frame.");
         }
 
         if (traits.IsMinimized)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Minimized);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Minimized, "Minimized windows cannot be thrown into tiles.");
         }
 
         if (traits.IsMaximized)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Maximized);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Maximized, "Maximized windows are ignored.");
         }
 
         if (traits.IsFullscreen)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Fullscreen);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Fullscreen, "Fullscreen windows are ignored.");
         }
 
         if (traits.IsCloaked)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Cloaked);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.Cloaked, "Cloaked windows are ignored.");
         }
 
         if (traits.IsElevated)
         {
-            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.ElevatedProcess);
+            return WindowEligibilityResult.Unsupported(WindowEligibilityReason.ElevatedProcess, "Elevated windows are not managed in v1.");
         }
 
-        return WindowEligibilityResult.Supported();
+        return WindowEligibilityResult.Supported("Window is eligible for Pop momentum snapping.");
     }
 }

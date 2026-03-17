@@ -2,68 +2,125 @@ using System.Diagnostics;
 using System.Drawing;
 using Pop.Core.Interfaces;
 using Pop.Core.Interop;
+using Pop.Core.Models;
 
 namespace Pop.Core.Services;
 
 public sealed class WindowAnimator : IWindowAnimator
 {
-    public async Task AnimateToTileAsync(IntPtr windowHandle, Rectangle targetBounds, double releaseVelocityX, int durationMs, CancellationToken cancellationToken = default)
+    private const double TargetFrameRate = 120d;
+
+    public AnimationPlan CreatePlan(Rectangle startBounds, Rectangle targetBounds, double releaseVelocityX, int durationMs)
     {
-        if (windowHandle == IntPtr.Zero || targetBounds == Rectangle.Empty)
+        if (startBounds == Rectangle.Empty || targetBounds == Rectangle.Empty)
         {
-            return;
+            return new AnimationPlan(Array.Empty<AnimationFrame>(), targetBounds, Math.Max(0, durationMs), 0);
         }
 
-        if (!NativeMethods.GetWindowRect(windowHandle, out var currentRectStruct))
-        {
-            NativeMethods.MoveWindow(windowHandle, targetBounds.X, targetBounds.Y, targetBounds.Width, targetBounds.Height, true);
-            return;
-        }
-
-        var startRect = currentRectStruct.ToRectangle();
         if (durationMs <= 16)
         {
-            NativeMethods.MoveWindow(windowHandle, targetBounds.X, targetBounds.Y, targetBounds.Width, targetBounds.Height, true);
+            return new AnimationPlan([new AnimationFrame(TimeSpan.Zero, targetBounds)], targetBounds, durationMs, 0);
+        }
+
+        var frameCount = Math.Max(2, (int)Math.Ceiling((durationMs / 1000d) * TargetFrameRate));
+        var maxOvershootPx = CalculateOvershoot(startBounds, targetBounds, releaseVelocityX);
+        var frames = new List<AnimationFrame>(frameCount);
+
+        for (var index = 0; index < frameCount; index++)
+        {
+            var progress = frameCount == 1 ? 1d : index / (double)(frameCount - 1);
+            var offsetMs = (int)Math.Round(progress * durationMs);
+            frames.Add(new AnimationFrame(TimeSpan.FromMilliseconds(offsetMs), InterpolateFrame(startBounds, targetBounds, progress, maxOvershootPx)));
+        }
+
+        frames[^1] = new AnimationFrame(TimeSpan.FromMilliseconds(durationMs), targetBounds);
+        return new AnimationPlan(frames, targetBounds, durationMs, maxOvershootPx);
+    }
+
+    public async Task AnimateToTileAsync(IntPtr windowHandle, AnimationPlan plan, CancellationToken cancellationToken = default)
+    {
+        if (windowHandle == IntPtr.Zero || plan.FinalBounds == Rectangle.Empty)
+        {
             return;
         }
 
-        var overshootX = Math.Clamp((int)(releaseVelocityX * 0.045), -140, 140);
-        var controlRect = new Rectangle(
-            startRect.X + overshootX,
-            startRect.Y + ((targetBounds.Y - startRect.Y) / 5),
-            startRect.Width,
-            startRect.Height);
+        if (plan.Frames.Count == 0)
+        {
+            NativeMethods.MoveWindow(windowHandle, plan.FinalBounds.X, plan.FinalBounds.Y, plan.FinalBounds.Width, plan.FinalBounds.Height, true);
+            return;
+        }
 
+        Rectangle? previousBounds = null;
         var stopwatch = Stopwatch.StartNew();
-        while (stopwatch.ElapsedMilliseconds < durationMs)
+        foreach (var frame in plan.Frames)
         {
             cancellationToken.ThrowIfCancellationRequested();
 
-            var t = stopwatch.Elapsed.TotalMilliseconds / durationMs;
-            var eased = EaseOutCubic(t);
-            var frame = InterpolateBezier(startRect, controlRect, targetBounds, eased);
+            var remaining = frame.Offset - stopwatch.Elapsed;
+            if (remaining > TimeSpan.Zero)
+            {
+                await Task.Delay(remaining, cancellationToken);
+            }
 
-            NativeMethods.MoveWindow(windowHandle, frame.X, frame.Y, frame.Width, frame.Height, true);
-            await Task.Delay(16, cancellationToken);
+            if (previousBounds.HasValue && previousBounds.Value == frame.Bounds)
+            {
+                continue;
+            }
+
+            previousBounds = frame.Bounds;
+            NativeMethods.MoveWindow(windowHandle, frame.Bounds.X, frame.Bounds.Y, frame.Bounds.Width, frame.Bounds.Height, true);
         }
 
-        NativeMethods.MoveWindow(windowHandle, targetBounds.X, targetBounds.Y, targetBounds.Width, targetBounds.Height, true);
+        if (!previousBounds.HasValue || previousBounds.Value != plan.FinalBounds)
+        {
+            NativeMethods.MoveWindow(windowHandle, plan.FinalBounds.X, plan.FinalBounds.Y, plan.FinalBounds.Width, plan.FinalBounds.Height, true);
+        }
     }
 
-    private static Rectangle InterpolateBezier(Rectangle start, Rectangle control, Rectangle end, double t)
+    private static Rectangle InterpolateFrame(Rectangle start, Rectangle end, double progress, int maxOvershootPx)
     {
+        var rawX = Lerp(start.X, end.X, EaseOutBack(progress, CalculateOvershootFactor(maxOvershootPx)));
+        var clampedX = ClampOvershoot(rawX, start.X, end.X, maxOvershootPx);
+        var sizeProgress = EaseOutCubic(progress);
         return new Rectangle(
-            Bezier(start.X, control.X, end.X, t),
-            Bezier(start.Y, control.Y, end.Y, t),
-            Math.Max(100, Bezier(start.Width, control.Width, end.Width, t)),
-            Math.Max(100, Bezier(start.Height, control.Height, end.Height, t)));
+            clampedX,
+            Lerp(start.Y, end.Y, EaseOutCubic(progress)),
+            Math.Max(100, Lerp(start.Width, end.Width, sizeProgress)),
+            Math.Max(100, Lerp(start.Height, end.Height, sizeProgress)));
     }
 
-    private static int Bezier(double start, double control, double end, double t)
+    private static int CalculateOvershoot(Rectangle start, Rectangle end, double releaseVelocityX)
     {
-        var inverse = 1 - t;
-        var value = (inverse * inverse * start) + (2 * inverse * t * control) + (t * t * end);
-        return (int)Math.Round(value);
+        var desired = (int)Math.Round(Math.Abs(releaseVelocityX) * 0.018);
+        var distance = Math.Abs(end.X - start.X);
+        var maxByDistance = Math.Max(24, Math.Min(96, distance / 6));
+        return Math.Min(maxByDistance, Math.Clamp(desired, 18, 96));
+    }
+
+    private static double CalculateOvershootFactor(int maxOvershootPx)
+    {
+        var normalized = Math.Clamp(Math.Abs(maxOvershootPx) / 96d, 0d, 1d);
+        return 1.05 + (normalized * 1.15);
+    }
+
+    private static int Lerp(double start, double end, double t) => (int)Math.Round(start + ((end - start) * t));
+
+    private static int ClampOvershoot(int value, int start, int end, int maxOvershootPx)
+    {
+        if (maxOvershootPx == 0)
+        {
+            return value;
+        }
+
+        return end >= start
+            ? Math.Clamp(value, Math.Min(start, end) - Math.Abs(maxOvershootPx), end + Math.Abs(maxOvershootPx))
+            : Math.Clamp(value, end - Math.Abs(maxOvershootPx), Math.Max(start, end) + Math.Abs(maxOvershootPx));
+    }
+
+    private static double EaseOutBack(double t, double overshootFactor)
+    {
+        var x = t - 1;
+        return 1 + ((overshootFactor + 1) * Math.Pow(x, 3)) + (overshootFactor * Math.Pow(x, 2));
     }
 
     private static double EaseOutCubic(double t) => 1 - Math.Pow(1 - t, 3);

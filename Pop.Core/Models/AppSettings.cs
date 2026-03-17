@@ -13,4 +13,6 @@ public sealed record AppSettings
     public int GlideDurationMs { get; init; } = 220;
 
     public bool ShowOverlay { get; init; } = true;
+
+    public bool EnableDiagnostics { get; init; }
 }

@@ -9,41 +9,60 @@ public sealed class WpfOverlayPresenter(Dispatcher dispatcher) : IOverlayPresent
 {
     private readonly Dispatcher _dispatcher = dispatcher;
     private OverlayWindow? _overlayWindow;
+    private bool _isVisible;
+    private SnapTarget _lastTarget = SnapTarget.None;
+    private Rectangle _lastBounds = Rectangle.Empty;
 
-    public void Show(SnapTarget target, Rectangle bounds)
+    public void Update(SnapTarget target, Rectangle bounds)
     {
-        _dispatcher.Invoke(() =>
+        if (_isVisible && _lastTarget == target && _lastBounds == bounds)
+        {
+            return;
+        }
+
+        InvokeOnDispatcher(() =>
         {
             var overlayWindow = EnsureWindow();
-            overlayWindow.UpdateBounds(bounds, target);
-
-            if (!overlayWindow.IsVisible)
-            {
-                overlayWindow.Show();
-            }
+            overlayWindow.UpdatePreview(bounds, target);
+            _isVisible = true;
+            _lastTarget = target;
+            _lastBounds = bounds;
         });
     }
 
     public void Hide()
     {
-        _dispatcher.Invoke(() =>
+        if (!_isVisible)
         {
-            if (_overlayWindow is { IsVisible: true })
+            return;
+        }
+
+        InvokeOnDispatcher(() =>
+        {
+            if (_overlayWindow is not null)
             {
-                _overlayWindow.Hide();
+                _overlayWindow.HidePreview();
             }
+
+            _isVisible = false;
+            _lastTarget = SnapTarget.None;
+            _lastBounds = Rectangle.Empty;
         });
     }
 
     public void Dispose()
     {
-        _dispatcher.Invoke(() =>
+        InvokeOnDispatcher(() =>
         {
             if (_overlayWindow is not null)
             {
                 _overlayWindow.ClosePermanently();
                 _overlayWindow = null;
             }
+
+            _isVisible = false;
+            _lastTarget = SnapTarget.None;
+            _lastBounds = Rectangle.Empty;
         });
     }
 
@@ -51,5 +70,16 @@ public sealed class WpfOverlayPresenter(Dispatcher dispatcher) : IOverlayPresent
     {
         _overlayWindow ??= new OverlayWindow();
         return _overlayWindow;
+    }
+
+    private void InvokeOnDispatcher(Action action)
+    {
+        if (_dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        _dispatcher.Invoke(action);
     }
 }

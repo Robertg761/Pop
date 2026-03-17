@@ -15,6 +15,7 @@ public sealed class JsonSettingsStoreTests : IDisposable
         var settings = await store.LoadAsync();
 
         Assert.True(settings.Enabled);
+        Assert.False(settings.EnableDiagnostics);
         Assert.True(settings.ShowOverlay);
         Assert.Equal(220, settings.GlideDurationMs);
     }
@@ -27,6 +28,7 @@ public sealed class JsonSettingsStoreTests : IDisposable
         {
             Enabled = false,
             LaunchAtStartup = true,
+            EnableDiagnostics = true,
             ThrowVelocityThresholdPxPerSec = 2300,
             HorizontalDominanceRatio = 2.25,
             GlideDurationMs = 340,

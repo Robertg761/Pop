@@ -33,4 +33,23 @@ public sealed class DragSession
             _samples.RemoveRange(0, _samples.Count - 48);
         }
     }
+
+    public Rectangle GetCurrentBoundsEstimate()
+    {
+        if (_samples.Count < 2)
+        {
+            return InitialBounds;
+        }
+
+        var first = _samples[0].Position;
+        var last = _samples[^1].Position;
+        var deltaX = last.X - first.X;
+        var deltaY = last.Y - first.Y;
+
+        return new Rectangle(
+            InitialBounds.X + deltaX,
+            InitialBounds.Y + deltaY,
+            InitialBounds.Width,
+            InitialBounds.Height);
+    }
 }

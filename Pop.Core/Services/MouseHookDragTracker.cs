@@ -24,6 +24,8 @@ public sealed class MouseHookDragTracker : IDragTracker
 
     public event EventHandler<DragSessionCompletedEventArgs>? DragCompleted;
 
+    public event EventHandler<DragSessionRejectedEventArgs>? DragRejected;
+
     public void Start()
     {
         if (_hookHandle != IntPtr.Zero)
@@ -96,6 +98,7 @@ public sealed class MouseHookDragTracker : IDragTracker
         var inspection = _windowInspector.InspectWindowAt(point);
         if (!inspection.Eligibility.IsSupported || inspection.WindowHandle == IntPtr.Zero)
         {
+            DragRejected?.Invoke(this, new DragSessionRejectedEventArgs(point, inspection));
             return;
         }
 

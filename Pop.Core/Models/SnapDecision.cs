@@ -5,8 +5,13 @@ public sealed record SnapDecision(
     double HorizontalVelocityPxPerSec,
     double VerticalVelocityPxPerSec,
     double HorizontalDominanceRatio,
-    bool IsQualified)
+    bool IsQualified,
+    SnapRejectionReason RejectionReason)
 {
-    public static SnapDecision None(double horizontalVelocityPxPerSec = 0, double verticalVelocityPxPerSec = 0, double horizontalDominanceRatio = 0) =>
-        new(SnapTarget.None, horizontalVelocityPxPerSec, verticalVelocityPxPerSec, horizontalDominanceRatio, false);
+    public static SnapDecision None(
+        SnapRejectionReason rejectionReason,
+        double horizontalVelocityPxPerSec = 0,
+        double verticalVelocityPxPerSec = 0,
+        double horizontalDominanceRatio = 0) =>
+        new(SnapTarget.None, horizontalVelocityPxPerSec, verticalVelocityPxPerSec, horizontalDominanceRatio, false, rejectionReason);
 }

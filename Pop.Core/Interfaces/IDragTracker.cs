@@ -4,6 +4,8 @@ namespace Pop.Core.Interfaces;
 
 public interface IDragTracker : IDisposable
 {
+    event EventHandler<DragSessionRejectedEventArgs>? DragRejected;
+
     event EventHandler<DragSessionEventArgs>? DragStarted;
 
     event EventHandler<DragSessionEventArgs>? DragUpdated;

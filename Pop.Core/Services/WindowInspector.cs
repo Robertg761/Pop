@@ -34,7 +34,7 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
     private static WindowInspectionResult CreateUnsupportedResult()
     {
         var traits = new WindowTraits(false, false, false, false, false, false, false, false, false, false);
-        return new WindowInspectionResult(IntPtr.Zero, Rectangle.Empty, MonitorInfo.Empty, traits, WindowEligibilityResult.Unsupported(WindowEligibilityReason.Unknown));
+        return new WindowInspectionResult(IntPtr.Zero, Rectangle.Empty, MonitorInfo.Empty, traits, WindowEligibilityResult.Unsupported(WindowEligibilityReason.Unknown, "No eligible window was found under the pointer."));
     }
 
     private static Rectangle TryGetWindowBounds(IntPtr windowHandle)

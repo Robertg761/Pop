@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Media.Animation;
 using System.Windows.Interop;
 using System.Windows.Media;
 using Pop.Core.Models;
@@ -9,8 +10,10 @@ namespace Pop.App.Services;
 
 public sealed class OverlayWindow : Window
 {
-    private readonly Border _highlightBorder;
+    private readonly Border _outerBorder;
+    private readonly Border _innerBorder;
     private bool _allowClose;
+    private bool _isHiding;
 
     public OverlayWindow()
     {
@@ -22,21 +25,32 @@ public sealed class OverlayWindow : Window
         ShowActivated = false;
         Topmost = true;
         IsHitTestVisible = false;
+        Opacity = 0;
 
-        _highlightBorder = new Border
+        _outerBorder = new Border
         {
+            CornerRadius = new CornerRadius(24),
+            BorderThickness = new Thickness(2),
+            Background = CreateBrush(0x1E, 0xFB, 0xFD, 0xFF),
+            BorderBrush = CreateBrush(0xFF, 0x8B, 0xC8, 0xFF)
+        };
+
+        _innerBorder = new Border
+        {
+            Margin = new Thickness(10),
             CornerRadius = new CornerRadius(18),
-            BorderThickness = new Thickness(3),
-            Background = CreateBrush(0x44, 0x54, 0x8E, 0xFF),
-            BorderBrush = CreateBrush(0xFF, 0x9B, 0xC2, 0xFF)
+            BorderThickness = new Thickness(1),
+            Background = CreateBrush(0x30, 0x38, 0x57, 0x90),
+            BorderBrush = CreateBrush(0x50, 0xFF, 0xFF, 0xFF)
         };
 
         Content = new Grid
         {
-            Margin = new Thickness(10),
+            Margin = new Thickness(12),
             Children =
             {
-                _highlightBorder
+                _outerBorder,
+                _innerBorder
             }
         };
     }
@@ -67,26 +81,60 @@ public sealed class OverlayWindow : Window
         base.OnClosing(e);
     }
 
-    public void UpdateBounds(Rectangle bounds, SnapTarget target)
+    public void UpdatePreview(Rectangle bounds, SnapTarget target)
     {
         Left = bounds.X;
         Top = bounds.Y;
         Width = bounds.Width;
         Height = bounds.Height;
 
-        _highlightBorder.Background = target switch
+        ApplyPalette(target);
+
+        BeginAnimation(OpacityProperty, null);
+        _isHiding = false;
+
+        if (!IsVisible)
         {
-            SnapTarget.LeftHalf => CreateBrush(0x40, 0x48, 0x7B, 0xFF),
-            SnapTarget.RightHalf => CreateBrush(0x40, 0xFF, 0x7B, 0x54),
-            _ => CreateBrush(0x30, 0x80, 0x80, 0x80)
+            Show();
+            Opacity = 0;
+        }
+
+        var fadeIn = new DoubleAnimation
+        {
+            To = 1,
+            Duration = TimeSpan.FromMilliseconds(95),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseOut }
         };
 
-        _highlightBorder.BorderBrush = target switch
+        BeginAnimation(OpacityProperty, fadeIn, HandoffBehavior.SnapshotAndReplace);
+    }
+
+    public void HidePreview()
+    {
+        if (!IsVisible || _isHiding)
         {
-            SnapTarget.LeftHalf => CreateBrush(0xFF, 0x89, 0xB4, 0xFF),
-            SnapTarget.RightHalf => CreateBrush(0xFF, 0xFF, 0xB0, 0x7A),
-            _ => CreateBrush(0xFF, 0xE0, 0xE0, 0xE0)
+            return;
+        }
+
+        _isHiding = true;
+        BeginAnimation(OpacityProperty, null);
+
+        var fadeOut = new DoubleAnimation
+        {
+            To = 0,
+            Duration = TimeSpan.FromMilliseconds(85),
+            EasingFunction = new QuadraticEase { EasingMode = EasingMode.EaseIn }
         };
+
+        fadeOut.Completed += (_, _) =>
+        {
+            if (_isHiding)
+            {
+                Hide();
+            }
+        };
+
+        BeginAnimation(OpacityProperty, fadeOut, HandoffBehavior.SnapshotAndReplace);
     }
 
     public void ClosePermanently()
@@ -100,5 +148,36 @@ public sealed class OverlayWindow : Window
         var brush = new SolidColorBrush(System.Windows.Media.Color.FromArgb(alpha, red, green, blue));
         brush.Freeze();
         return brush;
+    }
+
+    private void ApplyPalette(SnapTarget target)
+    {
+        _outerBorder.Background = target switch
+        {
+            SnapTarget.LeftHalf => CreateBrush(0x22, 0x8B, 0xC8, 0xFF),
+            SnapTarget.RightHalf => CreateBrush(0x22, 0xFF, 0xA9, 0x6B),
+            _ => CreateBrush(0x18, 0xD7, 0xDF, 0xE8)
+        };
+
+        _outerBorder.BorderBrush = target switch
+        {
+            SnapTarget.LeftHalf => CreateBrush(0xFF, 0x9D, 0xD7, 0xFF),
+            SnapTarget.RightHalf => CreateBrush(0xFF, 0xFF, 0xBF, 0x8C),
+            _ => CreateBrush(0xFF, 0xE0, 0xE0, 0xE0)
+        };
+
+        _innerBorder.Background = target switch
+        {
+            SnapTarget.LeftHalf => CreateBrush(0x42, 0x1A, 0x3A, 0x68),
+            SnapTarget.RightHalf => CreateBrush(0x42, 0x4B, 0x27, 0x18),
+            _ => CreateBrush(0x30, 0x2A, 0x2A, 0x2A)
+        };
+
+        _innerBorder.BorderBrush = target switch
+        {
+            SnapTarget.LeftHalf => CreateBrush(0x55, 0xE6, 0xF4, 0xFF),
+            SnapTarget.RightHalf => CreateBrush(0x55, 0xFF, 0xE7, 0xD1),
+            _ => CreateBrush(0x40, 0xFF, 0xFF, 0xFF)
+        };
     }
 }
