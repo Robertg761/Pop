@@ -18,9 +18,9 @@ internal static class AppReleaseMetadata
 
     public static string RepositoryUrl => GetMetadata("PopRepositoryUrl") ?? "https://github.com/Robertg761/Pop";
 
-    public static string VelopackPackId => GetMetadata("PopVelopackPackId") ?? "Robertg761.Pop";
+    public static string VelopackPackId => GetMetadata("PopVelopackPackId") ?? "Pop";
 
-    public static string Authors => GetMetadata("PopAuthors") ?? "Robertg761";
+    public static string Authors => GetMetadata("PopAuthors") ?? "Pop";
 
     public static string PublishRuntimeIdentifier => GetMetadata("PopPublishRuntimeIdentifier") ?? "win-x64";
 

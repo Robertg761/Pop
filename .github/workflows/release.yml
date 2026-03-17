@@ -13,6 +13,8 @@ permissions:
 jobs:
   validate:
     runs-on: windows-latest
+    outputs:
+      should_release: ${{ steps.version_gate.outputs.should_release }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,6 +27,7 @@ jobs:
           dotnet-version: 8.0.x
 
       - name: Verify version bump
+        id: version_gate
         shell: pwsh
         env:
           PUSH_BEFORE: ${{ github.event.before }}
@@ -84,6 +87,7 @@ jobs:
 
           $currentVersion = Get-VersionValue $currentProps
           $previousVersion = if ($previousHasProps) { Get-VersionValue $previousProps } else { $null }
+          $shouldRelease = $true
 
           $existingReleaseTags = @(git ls-remote --tags origin "refs/tags/v*")
           $isFirstRelease = $existingReleaseTags.Count -eq 0
@@ -93,12 +97,20 @@ jobs:
               throw 'Directory.Build.props must exist in the previous commit once releases already exist.'
             }
 
-            if ((Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
+            if ($currentVersion -eq $previousVersion) {
+              $shouldRelease = $false
+            }
+            elseif ((Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
               throw "Version must increase for a release. Current=$currentVersion Previous=$previousVersion"
             }
           }
 
-          if ($isFirstRelease) {
+          "should_release=$($shouldRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+          if (-not $shouldRelease) {
+            Write-Host "Directory.Build.props changed without a version bump. Skipping release."
+          }
+          elseif ($isFirstRelease) {
             Write-Host "Validated initial release version $currentVersion"
           }
           else {
@@ -110,6 +122,7 @@ jobs:
 
   release:
     needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
     runs-on: windows-latest
     steps:
       - name: Checkout

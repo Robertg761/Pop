@@ -7,13 +7,13 @@
     <!-- Keep the first published build on 0.1.0-alpha while release automation is stabilized. -->
 
     <Product>Pop</Product>
-    <Company>Robertg761</Company>
-    <Authors>Robertg761</Authors>
+    <Company>Pop</Company>
+    <Authors>Pop</Authors>
     <RepositoryUrl>https://github.com/Robertg761/Pop</RepositoryUrl>
     <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
     <NeutralLanguage>en-CA</NeutralLanguage>
 
-    <PopVelopackPackId>Robertg761.Pop</PopVelopackPackId>
+    <PopVelopackPackId>Pop</PopVelopackPackId>
     <PopPublishRuntimeIdentifier>win-x64</PopPublishRuntimeIdentifier>
     <PopVelopackVersion>0.0.1298</PopVelopackVersion>
   </PropertyGroup>
