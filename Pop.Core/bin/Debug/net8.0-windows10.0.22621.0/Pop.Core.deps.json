@@ -6,7 +6,7 @@
   "compilationOptions": {},
   "targets": {
     ".NETCoreApp,Version=v8.0": {
-      "Pop.Core/1.0.0": {
+      "Pop.Core/0.1.0-alpha": {
         "dependencies": {
           "runtimepack.Microsoft.Windows.SDK.NET.Ref": "10.0.22621.57"
         },
@@ -29,7 +29,7 @@
     }
   },
   "libraries": {
-    "Pop.Core/1.0.0": {
+    "Pop.Core/0.1.0-alpha": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

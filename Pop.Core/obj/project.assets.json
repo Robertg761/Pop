@@ -1,8 +1,7 @@
 {
   "version": 3,
   "targets": {
-    "net8.0-windows10.0.22621": {},
-    "net8.0-windows10.0.22621/win-x64": {}
+    "net8.0-windows10.0.22621": {}
   },
   "libraries": {},
   "projectFileDependencyGroups": {
@@ -13,7 +12,7 @@
     "C:\\Program Files (x86)\\Microsoft Visual Studio\\Shared\\NuGetPackages": {}
   },
   "project": {
-    "version": "1.0.0",
+    "version": "0.1.0-alpha",
     "restore": {
       "projectUniqueName": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Core\\Pop.Core.csproj",
       "projectName": "Pop.Core",
@@ -70,20 +69,8 @@
         "warn": true,
         "downloadDependencies": [
           {
-            "name": "Microsoft.AspNetCore.App.Runtime.win-x64",
-            "version": "[8.0.19, 8.0.19]"
-          },
-          {
-            "name": "Microsoft.NETCore.App.Runtime.win-x64",
-            "version": "[8.0.19, 8.0.19]"
-          },
-          {
             "name": "Microsoft.Windows.SDK.NET.Ref",
             "version": "[10.0.22621.57, 10.0.22621.57]"
-          },
-          {
-            "name": "Microsoft.WindowsDesktop.App.Runtime.win-x64",
-            "version": "[8.0.19, 8.0.19]"
           }
         ],
         "frameworkReferences": {
@@ -95,11 +82,6 @@
           }
         },
         "runtimeIdentifierGraphPath": "C:\\Program Files\\dotnet\\sdk\\9.0.304/PortableRuntimeIdentifierGraph.json"
-      }
-    },
-    "runtimes": {
-      "win-x64": {
-        "#import": []
       }
     }
   }

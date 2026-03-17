@@ -7,9 +7,9 @@
   "targets": {
     ".NETCoreApp,Version=v8.0": {},
     ".NETCoreApp,Version=v8.0/win-x64": {
-      "Pop.App/1.0.0": {
+      "Pop.App/0.1.0-alpha": {
         "dependencies": {
-          "Pop.Core": "1.0.0",
+          "Pop.Core": "0.1.0-alpha",
           "Velopack": "0.0.1298",
           "runtimepack.Microsoft.NETCore.App.Runtime.win-x64": "8.0.19",
           "runtimepack.Microsoft.WindowsDesktop.App.Runtime.win-x64": "8.0.19",
@@ -995,18 +995,18 @@
           }
         }
       },
-      "Pop.Core/1.0.0": {
+      "Pop.Core/0.1.0-alpha": {
         "runtime": {
           "Pop.Core.dll": {
-            "assemblyVersion": "1.0.0.0",
-            "fileVersion": "1.0.0.0"
+            "assemblyVersion": "0.1.0.0",
+            "fileVersion": "0.1.0.0"
           }
         }
       }
     }
   },
   "libraries": {
-    "Pop.App/1.0.0": {
+    "Pop.App/0.1.0-alpha": {
       "type": "project",
       "serviceable": false,
       "sha512": ""
@@ -1040,7 +1040,7 @@
       "path": "velopack/0.0.1298",
       "hashPath": "velopack.0.0.1298.nupkg.sha512"
     },
-    "Pop.Core/1.0.0": {
+    "Pop.Core/0.1.0-alpha": {
       "type": "project",
       "serviceable": false,
       "sha512": ""

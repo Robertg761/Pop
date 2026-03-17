@@ -1,12 +1,9 @@
 {
   "version": 2,
-  "dgSpecHash": "8CNLRhcEWaI=",
+  "dgSpecHash": "m/ooasLeG3Q=",
   "success": true,
   "projectFilePath": "G:\\Projects\\Current Work in Progress Projects\\Pop\\Pop.Core\\Pop.Core.csproj",
   "expectedPackageFiles": [
-    "E:\\dev-cache\\nuget\\microsoft.netcore.app.runtime.win-x64\\8.0.19\\microsoft.netcore.app.runtime.win-x64.8.0.19.nupkg.sha512",
-    "E:\\dev-cache\\nuget\\microsoft.windowsdesktop.app.runtime.win-x64\\8.0.19\\microsoft.windowsdesktop.app.runtime.win-x64.8.0.19.nupkg.sha512",
-    "E:\\dev-cache\\nuget\\microsoft.aspnetcore.app.runtime.win-x64\\8.0.19\\microsoft.aspnetcore.app.runtime.win-x64.8.0.19.nupkg.sha512",
     "E:\\dev-cache\\nuget\\microsoft.windows.sdk.net.ref\\10.0.22621.57\\microsoft.windows.sdk.net.ref.10.0.22621.57.nupkg.sha512"
   ],
   "logs": []
