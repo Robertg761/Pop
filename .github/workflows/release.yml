@@ -28,6 +28,7 @@ jobs:
         shell: pwsh
         env:
           PUSH_BEFORE: ${{ github.event.before }}
+          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $baseRef = $env:PUSH_BEFORE
           if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
@@ -75,11 +76,30 @@ jobs:
           $currentVersion = Get-VersionValue $currentProps
           $previousVersion = Get-VersionValue $previousProps
 
-          if ((Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            'User-Agent' = 'Pop Release Workflow'
+          }
+
+          $existingReleases = @(
+            Invoke-RestMethod `
+              -Uri "https://api.github.com/repos/${{ github.repository }}/releases?per_page=1" `
+              -Headers $headers
+          )
+
+          $isFirstRelease = $existingReleases.Count -eq 0
+
+          if (-not $isFirstRelease -and (Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
             throw "Version must increase for a release. Current=$currentVersion Previous=$previousVersion"
           }
 
-          Write-Host "Validated version bump $previousVersion -> $currentVersion"
+          if ($isFirstRelease) {
+            Write-Host "Validated initial release version $currentVersion"
+          }
+          else {
+            Write-Host "Validated version bump $previousVersion -> $currentVersion"
+          }
 
       - name: Test solution
         run: dotnet test Pop.sln --configuration Release

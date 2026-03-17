@@ -1,0 +1,39 @@
+<svg width="980" height="280" viewBox="0 0 980 280" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="badge-fill" x1="20" y1="14" x2="248" y2="260" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#091323"/>
+      <stop offset="0.52" stop-color="#112344"/>
+      <stop offset="1" stop-color="#1B2A50"/>
+    </linearGradient>
+    <radialGradient id="badge-glow" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(182 58) rotate(128.177) scale(104.373)">
+      <stop stop-color="#FB923C" stop-opacity="0.35"/>
+      <stop offset="1" stop-color="#FB923C" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="pane-accent" x1="74" y1="64" x2="132" y2="180" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDBA74"/>
+      <stop offset="0.45" stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="frame-fill" x1="56" y1="60" x2="220" y2="188" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13284B"/>
+      <stop offset="1" stop-color="#0C1930"/>
+    </linearGradient>
+    <linearGradient id="spark-fill" x1="182" y1="34" x2="214" y2="68" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF5E7"/>
+      <stop offset="1" stop-color="#FED7AA"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="18" y="18" width="244" height="244" rx="66" fill="url(#badge-fill)"/>
+  <rect x="18" y="18" width="244" height="244" rx="66" fill="url(#badge-glow)"/>
+  <rect x="18" y="18" width="244" height="244" rx="66" stroke="#35537E" stroke-width="4"/>
+
+  <rect x="56" y="70" width="168" height="132" rx="34" fill="url(#frame-fill)" stroke="#E6F1FF" stroke-width="10"/>
+  <rect x="70" y="84" width="64" height="104" rx="22" fill="url(#pane-accent)"/>
+  <path d="M140 90V182" stroke="#EEF5FF" stroke-width="8" stroke-linecap="round" opacity="0.96"/>
+  <path d="M184 58L196 38L204 50L224 58L204 66L196 78L188 66L168 58L188 50L184 58Z" fill="url(#spark-fill)" stroke="#F97316" stroke-width="6" stroke-linejoin="round"/>
+  <path d="M172 78C183 70 192 61 197 52" stroke="#F97316" stroke-width="6" stroke-linecap="round"/>
+
+  <text x="304" y="150" fill="#F8FAFC" font-size="128" font-weight="800" font-family="Segoe UI Variable Display, Segoe UI, Aptos, sans-serif" letter-spacing="-5">Pop</text>
+  <text x="308" y="196" fill="#FB923C" font-size="34" font-weight="700" font-family="Segoe UI Variable Text, Segoe UI, Aptos, sans-serif" letter-spacing="4">MOMENTUM SNAP</text>
+</svg>

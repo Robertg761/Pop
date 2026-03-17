@@ -1,0 +1,23 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="pane-accent" x1="144" y1="146" x2="248" y2="356" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FDBA74"/>
+      <stop offset="0.45" stop-color="#FB923C"/>
+      <stop offset="1" stop-color="#F97316"/>
+    </linearGradient>
+    <linearGradient id="frame-fill" x1="110" y1="140" x2="402" y2="368" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#13284B"/>
+      <stop offset="1" stop-color="#0C1930"/>
+    </linearGradient>
+    <linearGradient id="spark-fill" x1="332" y1="90" x2="382" y2="144" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#FFF5E7"/>
+      <stop offset="1" stop-color="#FED7AA"/>
+    </linearGradient>
+  </defs>
+
+  <rect x="110" y="140" width="292" height="228" rx="58" fill="url(#frame-fill)" stroke="#E6F1FF" stroke-width="16"/>
+  <rect x="132" y="162" width="110" height="184" rx="40" fill="url(#pane-accent)"/>
+  <path d="M256 174V334" stroke="#EEF5FF" stroke-width="13" stroke-linecap="round" opacity="0.96"/>
+  <path d="M334 118L352 90L362 108L390 118L362 128L352 146L342 128L314 118L342 108L334 118Z" fill="url(#spark-fill)" stroke="#F97316" stroke-width="10" stroke-linejoin="round"/>
+  <path d="M316 152C333 139 346 127 353 114" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+</svg>

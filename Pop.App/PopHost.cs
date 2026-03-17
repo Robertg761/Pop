@@ -20,6 +20,7 @@ public sealed class PopHost : IDisposable
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly Forms.NotifyIcon _notifyIcon;
+    private readonly Icon _trayIcon;
     private readonly Forms.ToolStripMenuItem _enabledMenuItem;
     private readonly Forms.ToolStripMenuItem _launchAtStartupMenuItem;
     private readonly Forms.ToolStripMenuItem _versionMenuItem;
@@ -82,10 +83,11 @@ public sealed class PopHost : IDisposable
             exitMenuItem
         ]);
 
+        _trayIcon = AppIconProvider.CreateTrayIcon();
         _notifyIcon = new Forms.NotifyIcon
         {
             Text = "Pop",
-            Icon = SystemIcons.Application,
+            Icon = _trayIcon,
             ContextMenuStrip = contextMenu,
             Visible = true
         };
@@ -127,6 +129,7 @@ public sealed class PopHost : IDisposable
 
         _notifyIcon.Visible = false;
         _notifyIcon.Dispose();
+        _trayIcon.Dispose();
         _disposeCancellation.Dispose();
     }
 

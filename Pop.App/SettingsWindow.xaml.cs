@@ -15,6 +15,7 @@ public partial class SettingsWindow : Window
     internal SettingsWindow(AppSettings settings, IUpdateService updateService)
     {
         InitializeComponent();
+        Icon = AppIconProvider.CreateWindowIcon();
         _viewModel = SettingsViewModel.FromSettings(settings);
         _updateService = updateService;
         DataContext = _viewModel;

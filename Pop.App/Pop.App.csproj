@@ -9,6 +9,7 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Pop.ico</ApplicationIcon>
     <StartupObject>Pop.App.App</StartupObject>
   </PropertyGroup>
 
@@ -23,6 +24,10 @@
   <ItemGroup>
     <ApplicationDefinition Remove="App.xaml" />
     <Page Include="App.xaml" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Resource Include="Assets\Pop.ico" />
   </ItemGroup>
 
 </Project>
