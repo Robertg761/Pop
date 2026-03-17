@@ -9,14 +9,15 @@ namespace Pop.Tests;
 public sealed class MouseHookDragTrackerTests
 {
     [Fact]
-    public void DragSession_CurrentMonitorInfo_FollowsTheWindowCenterDuringDrag()
+    public void DragSession_CurrentWindowState_FollowsTheWindowDuringDrag()
     {
         var startMonitor = new MonitorInfo(new Rectangle(0, 0, 1920, 1080), new Rectangle(0, 0, 1920, 1040));
         var secondMonitor = new MonitorInfo(new Rectangle(1920, 0, 1920, 1080), new Rectangle(1920, 0, 1920, 1040));
         var startPoint = new Point(100, 100);
         var movedPoint = new Point(2200, 120);
-        var currentMonitorPoint = new Point(2600, 420);
-        var tracker = new MouseHookDragTracker(new FakeWindowInspector(startPoint, currentMonitorPoint, startMonitor, secondMonitor));
+        var startBounds = new Rectangle(100, 100, 800, 600);
+        var movedBounds = new Rectangle(2020, 140, 800, 600);
+        var tracker = new MouseHookDragTracker(new FakeWindowInspector(startPoint, startMonitor, secondMonitor, startBounds, movedBounds));
 
         DragSession? startedSession = null;
         DragSession? completedSession = null;
@@ -32,18 +33,21 @@ public sealed class MouseHookDragTrackerTests
         Assert.NotNull(startedSession);
         Assert.Equal(startMonitor, startedSession!.MonitorInfo);
         Assert.Equal(startMonitor, startedSession.CurrentMonitorInfo);
+        Assert.Equal(startBounds, startedSession.CurrentBounds);
 
         InvokePrivate(tracker, "HandleMouseMove", movedPoint, origin.AddMilliseconds(40));
         Assert.NotNull(updatedSession);
         Assert.Same(startedSession, updatedSession);
         Assert.Equal(startMonitor, updatedSession!.MonitorInfo);
         Assert.Equal(secondMonitor, updatedSession.CurrentMonitorInfo);
+        Assert.Equal(movedBounds, updatedSession.CurrentBounds);
 
         InvokePrivate(tracker, "HandleLeftButtonUp", movedPoint, origin.AddMilliseconds(80));
         Assert.NotNull(completedSession);
         Assert.Same(startedSession, completedSession);
         Assert.Equal(startMonitor, completedSession!.MonitorInfo);
         Assert.Equal(secondMonitor, completedSession.CurrentMonitorInfo);
+        Assert.Equal(movedBounds, completedSession.CurrentBounds);
     }
 
     private static void InvokePrivate(object target, string methodName, Point point, DateTimeOffset timestamp)
@@ -60,13 +64,16 @@ public sealed class MouseHookDragTrackerTests
     private sealed class FakeWindowInspector : IWindowInspector
     {
         private readonly Dictionary<Point, WindowInspectionResult> _windowInspections = new();
-        private readonly Dictionary<Point, MonitorInfo> _monitorInspections = new();
+        private readonly Queue<WindowStateSnapshot> _windowStates = new();
+        private readonly MonitorInfo _startMonitor;
 
-        public FakeWindowInspector(Point startPoint, Point currentMonitorPoint, MonitorInfo startMonitor, MonitorInfo movedMonitor)
+        public FakeWindowInspector(Point startPoint, MonitorInfo startMonitor, MonitorInfo movedMonitor, Rectangle startBounds, Rectangle movedBounds)
         {
+            _startMonitor = startMonitor;
             _windowInspections[startPoint] = CreateSupportedInspection(startMonitor);
-            _monitorInspections[startPoint] = startMonitor;
-            _monitorInspections[currentMonitorPoint] = movedMonitor;
+            _windowStates.Enqueue(new WindowStateSnapshot(startBounds, startMonitor));
+            _windowStates.Enqueue(new WindowStateSnapshot(movedBounds, movedMonitor));
+            _windowStates.Enqueue(new WindowStateSnapshot(movedBounds, movedMonitor));
         }
 
         public WindowInspectionResult InspectWindowAt(Point screenPoint)
@@ -78,9 +85,17 @@ public sealed class MouseHookDragTrackerTests
 
         public MonitorInfo InspectMonitorAt(Point screenPoint)
         {
-            return _monitorInspections.TryGetValue(screenPoint, out var monitorInfo)
-                ? monitorInfo
-                : MonitorInfo.Empty;
+            return _startMonitor;
+        }
+
+        public WindowStateSnapshot InspectWindowState(IntPtr windowHandle)
+        {
+            if (_windowStates.Count == 0)
+            {
+                return new WindowStateSnapshot(Rectangle.Empty, MonitorInfo.Empty);
+            }
+
+            return _windowStates.Dequeue();
         }
 
         private static WindowInspectionResult CreateSupportedInspection(MonitorInfo monitorInfo)

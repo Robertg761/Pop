@@ -36,6 +36,11 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
         return TryGetMonitorInfo(screenPoint);
     }
 
+    public WindowStateSnapshot InspectWindowState(IntPtr windowHandle)
+    {
+        return new WindowStateSnapshot(TryGetWindowBounds(windowHandle), TryGetMonitorInfo(windowHandle));
+    }
+
     private static WindowInspectionResult CreateUnsupportedResult()
     {
         var traits = new WindowTraits(false, false, false, false, false, false, false, false, false, false);

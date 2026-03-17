@@ -8,4 +8,6 @@ public interface IWindowInspector
     WindowInspectionResult InspectWindowAt(Point screenPoint);
 
     MonitorInfo InspectMonitorAt(Point screenPoint);
+
+    WindowStateSnapshot InspectWindowState(IntPtr windowHandle);
 }

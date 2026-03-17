@@ -13,6 +13,7 @@ public sealed class DragSession
         MonitorInfo = monitorInfo;
         CurrentMonitorInfo = monitorInfo;
         InitialBounds = initialBounds;
+        CurrentBounds = initialBounds;
     }
 
     public IntPtr WindowHandle { get; }
@@ -22,6 +23,8 @@ public sealed class DragSession
     public MonitorInfo CurrentMonitorInfo { get; private set; }
 
     public Rectangle InitialBounds { get; }
+
+    public Rectangle CurrentBounds { get; private set; }
 
     public SnapTarget CurrentPredictedTarget { get; set; }
 
@@ -59,5 +62,10 @@ public sealed class DragSession
     public void UpdateCurrentMonitorInfo(MonitorInfo monitorInfo)
     {
         CurrentMonitorInfo = monitorInfo;
+    }
+
+    public void UpdateCurrentBounds(Rectangle bounds)
+    {
+        CurrentBounds = bounds;
     }
 }

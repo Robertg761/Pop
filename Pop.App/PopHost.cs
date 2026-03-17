@@ -15,6 +15,7 @@ public sealed class PopHost : IDisposable
     private readonly StartupRegistrationService _startupRegistrationService;
     private readonly IUpdateService _updateService;
     private readonly IDragTracker _dragTracker;
+    private readonly IWindowInspector _windowInspector;
     private readonly ISnapDecider _snapDecider;
     private readonly IWindowAnimator _windowAnimator;
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
@@ -38,11 +39,11 @@ public sealed class PopHost : IDisposable
         _settingsStore = new JsonSettingsStore();
         _startupRegistrationService = new StartupRegistrationService();
         _updateService = new UpdateService();
+        _windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
         _snapDecider = new SnapDecider();
         _windowAnimator = new WindowAnimator();
 
-        var windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
-        _dragTracker = new MouseHookDragTracker(windowInspector);
+        _dragTracker = new MouseHookDragTracker(_windowInspector);
         _dragTracker.DragRejected += OnDragRejected;
         _dragTracker.DragStarted += OnDragStarted;
         _dragTracker.DragUpdated += OnDragUpdated;
@@ -175,9 +176,23 @@ public sealed class PopHost : IDisposable
                     ["velocityX"] = Math.Round(decision.HorizontalVelocityPxPerSec).ToString(),
                     ["velocityY"] = Math.Round(decision.VerticalVelocityPxPerSec).ToString(),
                     ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00")
-                });
+            });
             return;
         }
+
+        if (e.Session.CurrentMonitorInfo != e.Session.MonitorInfo)
+        {
+            try
+            {
+                await Task.Delay(16, _disposeCancellation.Token);
+            }
+            catch (OperationCanceledException)
+            {
+                return;
+            }
+        }
+
+        RefreshSessionState(e.Session);
 
         var activeMonitorInfo = e.Session.CurrentMonitorInfo;
         var visibleTileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, activeMonitorInfo);
@@ -190,7 +205,7 @@ public sealed class PopHost : IDisposable
 
         e.Session.CurrentPredictedTarget = decision.Target;
         var plan = _windowAnimator.CreatePlan(
-            e.Session.GetCurrentBoundsEstimate(),
+            e.Session.CurrentBounds,
             tileBounds,
             decision.HorizontalVelocityPxPerSec,
             _settings.GlideDurationMs);
@@ -215,6 +230,20 @@ public sealed class PopHost : IDisposable
         }
         catch (OperationCanceledException)
         {
+        }
+    }
+
+    private void RefreshSessionState(DragSession session)
+    {
+        var state = _windowInspector.InspectWindowState(session.WindowHandle);
+        if (state.Bounds != Rectangle.Empty)
+        {
+            session.UpdateCurrentBounds(state.Bounds);
+        }
+
+        if (state.MonitorInfo != MonitorInfo.Empty)
+        {
+            session.UpdateCurrentMonitorInfo(state.MonitorInfo);
         }
     }
 

@@ -105,7 +105,7 @@ public sealed class MouseHookDragTracker : IDragTracker
 
         var session = new DragSession(inspection.WindowHandle, inspection.MonitorInfo, inspection.Bounds);
         session.AddSample(new DragSample(point, timestamp));
-        RefreshCurrentSessionMonitor(session);
+        RefreshCurrentSessionState(session);
         _activeSession = session;
         DragStarted?.Invoke(this, new DragSessionEventArgs(session));
     }
@@ -118,7 +118,7 @@ public sealed class MouseHookDragTracker : IDragTracker
         }
 
         _activeSession.AddSample(new DragSample(point, timestamp));
-        RefreshCurrentSessionMonitor(_activeSession);
+        RefreshCurrentSessionState(_activeSession);
         DragUpdated?.Invoke(this, new DragSessionEventArgs(_activeSession));
     }
 
@@ -130,27 +130,22 @@ public sealed class MouseHookDragTracker : IDragTracker
         }
 
         _activeSession.AddSample(new DragSample(point, timestamp));
-        RefreshCurrentSessionMonitor(_activeSession);
+        RefreshCurrentSessionState(_activeSession);
         DragCompleted?.Invoke(this, new DragSessionCompletedEventArgs(_activeSession));
         _activeSession = null;
     }
 
-    private void RefreshCurrentSessionMonitor(DragSession session)
+    private void RefreshCurrentSessionState(DragSession session)
     {
-        var estimatedBounds = session.GetCurrentBoundsEstimate();
-        if (estimatedBounds == Rectangle.Empty)
+        var windowState = _windowInspector.InspectWindowState(session.WindowHandle);
+        if (windowState.Bounds != Rectangle.Empty)
         {
-            return;
+            session.UpdateCurrentBounds(windowState.Bounds);
         }
 
-        var probePoint = new System.Drawing.Point(
-            estimatedBounds.Left + (estimatedBounds.Width / 2),
-            estimatedBounds.Top + (estimatedBounds.Height / 2));
-
-        var monitorInfo = _windowInspector.InspectMonitorAt(probePoint);
-        if (monitorInfo != MonitorInfo.Empty)
+        if (windowState.MonitorInfo != MonitorInfo.Empty)
         {
-            session.UpdateCurrentMonitorInfo(monitorInfo);
+            session.UpdateCurrentMonitorInfo(windowState.MonitorInfo);
         }
     }
 }
