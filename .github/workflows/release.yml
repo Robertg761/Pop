@@ -28,7 +28,6 @@ jobs:
         shell: pwsh
         env:
           PUSH_BEFORE: ${{ github.event.before }}
-          GITHUB_TOKEN: ${{ github.token }}
         run: |
           $baseRef = $env:PUSH_BEFORE
           if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
@@ -86,19 +85,8 @@ jobs:
           $currentVersion = Get-VersionValue $currentProps
           $previousVersion = if ($previousHasProps) { Get-VersionValue $previousProps } else { $null }
 
-          $headers = @{
-            Accept = 'application/vnd.github+json'
-            Authorization = "Bearer $env:GITHUB_TOKEN"
-            'User-Agent' = 'Pop Release Workflow'
-          }
-
-          $existingReleases = @(
-            Invoke-RestMethod `
-              -Uri "https://api.github.com/repos/${{ github.repository }}/releases?per_page=1" `
-              -Headers $headers
-          )
-
-          $isFirstRelease = $existingReleases.Count -eq 0
+          $existingReleaseTags = @(git ls-remote --tags origin "refs/tags/v*")
+          $isFirstRelease = $existingReleaseTags.Count -eq 0
 
           if (-not $isFirstRelease) {
             if (-not $previousHasProps) {
@@ -157,20 +145,9 @@ jobs:
       - name: Check for previous release
         id: releases
         shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          $headers = @{
-            Accept = 'application/vnd.github+json'
-            Authorization = "Bearer $env:GITHUB_TOKEN"
-            'User-Agent' = 'Pop Release Workflow'
-          }
-
-          $response = Invoke-RestMethod `
-            -Uri "https://api.github.com/repos/${{ github.repository }}/releases?per_page=1" `
-            -Headers $headers
-
-          $hasRelease = @($response).Count -gt 0
+          $existingReleaseTags = @(git ls-remote --tags origin "refs/tags/v*")
+          $hasRelease = $existingReleaseTags.Count -gt 0
           "has_release=$($hasRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
 
       - name: Install Velopack CLI
