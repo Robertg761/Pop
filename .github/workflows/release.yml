@@ -45,12 +45,22 @@ jobs:
           }
 
           $currentProps = [xml](Get-Content Directory.Build.props)
-          $previousPropsText = git show "${baseRef}:Directory.Build.props"
-          if ([string]::IsNullOrWhiteSpace($previousPropsText)) {
-            throw 'Unable to load Directory.Build.props from the previous commit.'
+          $previousHasProps = $true
+
+          git cat-file -e "${baseRef}:Directory.Build.props" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+            $previousHasProps = $false
           }
 
-          $previousProps = [xml]$previousPropsText
+          $previousProps = $null
+          if ($previousHasProps) {
+            $previousPropsText = git show "${baseRef}:Directory.Build.props"
+            if ([string]::IsNullOrWhiteSpace($previousPropsText)) {
+              throw 'Unable to load Directory.Build.props from the previous commit.'
+            }
+
+            $previousProps = [xml]$previousPropsText
+          }
 
           function Get-VersionValue([xml]$xmlDocument) {
             $value = $xmlDocument.Project.PropertyGroup.Version | Select-Object -First 1
@@ -74,7 +84,7 @@ jobs:
           }
 
           $currentVersion = Get-VersionValue $currentProps
-          $previousVersion = Get-VersionValue $previousProps
+          $previousVersion = if ($previousHasProps) { Get-VersionValue $previousProps } else { $null }
 
           $headers = @{
             Accept = 'application/vnd.github+json'
@@ -90,8 +100,14 @@ jobs:
 
           $isFirstRelease = $existingReleases.Count -eq 0
 
-          if (-not $isFirstRelease -and (Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
-            throw "Version must increase for a release. Current=$currentVersion Previous=$previousVersion"
+          if (-not $isFirstRelease) {
+            if (-not $previousHasProps) {
+              throw 'Directory.Build.props must exist in the previous commit once releases already exist.'
+            }
+
+            if ((Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
+              throw "Version must increase for a release. Current=$currentVersion Previous=$previousVersion"
+            }
           }
 
           if ($isFirstRelease) {
