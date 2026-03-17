@@ -13,7 +13,7 @@ using System.Reflection;
 [assembly: System.Reflection.AssemblyCompanyAttribute("Pop.Tests")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+a4e5da9740ca723bb6e4935f11ac21a3f3491adf")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+343e6d68e0eee92eabef08e2f0e7497c5fe4f127")]
 [assembly: System.Reflection.AssemblyProductAttribute("Pop.Tests")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Pop.Tests")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
