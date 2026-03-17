@@ -223,6 +223,82 @@
                         </StackPanel>
                     </StackPanel>
                 </Border>
+
+                <Border Style="{StaticResource SectionBorderStyle}" Margin="0,0,0,6">
+                    <StackPanel>
+                        <Grid Margin="0,0,0,14">
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="*" />
+                                <ColumnDefinition Width="Auto" />
+                            </Grid.ColumnDefinitions>
+
+                            <StackPanel>
+                                <TextBlock Style="{StaticResource SectionTitleStyle}"
+                                           Text="Updates" />
+                                <TextBlock Margin="0,6,0,0"
+                                           Style="{StaticResource SectionBodyStyle}"
+                                           Text="Installed builds check GitHub releases in the background, download updates for you, and prompt when Pop is ready to restart into the new version." />
+                            </StackPanel>
+
+                            <Border Grid.Column="1"
+                                    Padding="12,8"
+                                    CornerRadius="999"
+                                    Background="#142238"
+                                    BorderBrush="#35527B"
+                                    BorderThickness="1"
+                                    VerticalAlignment="Top">
+                                <TextBlock x:Name="CurrentVersionTextBlock"
+                                           Foreground="#E6F2FF"
+                                           FontSize="12"
+                                           FontWeight="SemiBold"
+                                           Text="Version 0.0.0" />
+                            </Border>
+                        </Grid>
+
+                        <TextBlock x:Name="UpdateStatusTextBlock"
+                                   Margin="0,0,0,12"
+                                   Style="{StaticResource SectionBodyStyle}"
+                                   Text="Checking update availability..." />
+
+                        <StackPanel x:Name="UpdateProgressPanel"
+                                    Margin="0,0,0,14"
+                                    Visibility="Collapsed">
+                            <ProgressBar x:Name="UpdateProgressBar"
+                                         Height="10"
+                                         Maximum="100"
+                                         Foreground="#F97316"
+                                         Background="#1B2A42" />
+                            <TextBlock x:Name="UpdateProgressTextBlock"
+                                       Margin="0,8,0,0"
+                                       Style="{StaticResource SectionBodyStyle}"
+                                       Text="0%" />
+                        </StackPanel>
+
+                        <StackPanel Orientation="Horizontal">
+                            <Button x:Name="CheckUpdatesButton"
+                                    Width="130"
+                                    Padding="0,12"
+                                    Background="#18253A"
+                                    BorderBrush="#314A69"
+                                    BorderThickness="1"
+                                    Click="CheckUpdatesButton_OnClick"
+                                    Content="Check Now"
+                                    Foreground="#E2E8F0"
+                                    FontWeight="SemiBold" />
+                            <Button x:Name="InstallUpdateButton"
+                                    Width="148"
+                                    Margin="12,0,0,0"
+                                    Padding="0,12"
+                                    Background="#F97316"
+                                    BorderThickness="0"
+                                    Click="InstallUpdateButton_OnClick"
+                                    Content="Install Update"
+                                    Foreground="White"
+                                    FontWeight="SemiBold"
+                                    Visibility="Collapsed" />
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
             </StackPanel>
         </ScrollViewer>
 

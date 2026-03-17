@@ -1,0 +1,42 @@
+<Project>
+  <PropertyGroup>
+    <Version>1.0.0</Version>
+    <AssemblyVersion>1.0.0.0</AssemblyVersion>
+    <FileVersion>1.0.0.0</FileVersion>
+    <InformationalVersion>1.0.0</InformationalVersion>
+
+    <Product>Pop</Product>
+    <Company>Robertg761</Company>
+    <Authors>Robertg761</Authors>
+    <RepositoryUrl>https://github.com/Robertg761/Pop</RepositoryUrl>
+    <PackageProjectUrl>$(RepositoryUrl)</PackageProjectUrl>
+    <NeutralLanguage>en-CA</NeutralLanguage>
+
+    <PopVelopackPackId>Robertg761.Pop</PopVelopackPackId>
+    <PopPublishRuntimeIdentifier>win-x64</PopPublishRuntimeIdentifier>
+    <PopVelopackVersion>0.0.1298</PopVelopackVersion>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopRepositoryUrl</_Parameter1>
+      <_Parameter2>$(RepositoryUrl)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopVelopackPackId</_Parameter1>
+      <_Parameter2>$(PopVelopackPackId)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopAuthors</_Parameter1>
+      <_Parameter2>$(Authors)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopPublishRuntimeIdentifier</_Parameter1>
+      <_Parameter2>$(PopPublishRuntimeIdentifier)</_Parameter2>
+    </AssemblyAttribute>
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>PopVelopackVersion</_Parameter1>
+      <_Parameter2>$(PopVelopackVersion)</_Parameter2>
+    </AssemblyAttribute>
+  </ItemGroup>
+</Project>

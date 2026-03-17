@@ -1,8 +1,20 @@
+using Velopack;
+
 namespace Pop.App;
 
 public partial class App : System.Windows.Application
 {
     private PopHost? _host;
+
+    [STAThread]
+    public static void Main(string[] args)
+    {
+        VelopackApp.Build().Run();
+
+        var app = new App();
+        app.InitializeComponent();
+        app.Run();
+    }
 
     protected override async void OnStartup(System.Windows.StartupEventArgs e)
     {

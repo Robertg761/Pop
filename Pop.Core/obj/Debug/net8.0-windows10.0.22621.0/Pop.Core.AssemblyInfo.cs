@@ -10,13 +10,20 @@
 using System;
 using System.Reflection;
 
-[assembly: System.Reflection.AssemblyCompanyAttribute("Pop.Core")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("PopRepositoryUrl", "https://github.com/Robertg761/Pop")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("PopVelopackPackId", "Robertg761.Pop")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("PopAuthors", "Robertg761")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("PopPublishRuntimeIdentifier", "win-x64")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("PopVelopackVersion", "0.0.1298")]
+[assembly: System.Reflection.AssemblyCompanyAttribute("Robertg761")]
 [assembly: System.Reflection.AssemblyConfigurationAttribute("Debug")]
 [assembly: System.Reflection.AssemblyFileVersionAttribute("1.0.0.0")]
-[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+343e6d68e0eee92eabef08e2f0e7497c5fe4f127")]
-[assembly: System.Reflection.AssemblyProductAttribute("Pop.Core")]
+[assembly: System.Reflection.AssemblyInformationalVersionAttribute("1.0.0+16a625b6fe47cb9032880c1a49e9377706b55b1c")]
+[assembly: System.Reflection.AssemblyProductAttribute("Pop")]
 [assembly: System.Reflection.AssemblyTitleAttribute("Pop.Core")]
 [assembly: System.Reflection.AssemblyVersionAttribute("1.0.0.0")]
+[assembly: System.Reflection.AssemblyMetadataAttribute("RepositoryUrl", "https://github.com/Robertg761/Pop")]
+[assembly: System.Resources.NeutralResourcesLanguageAttribute("en-CA")]
 [assembly: System.Runtime.Versioning.TargetPlatformAttribute("Windows10.0.22621.0")]
 [assembly: System.Runtime.Versioning.SupportedOSPlatformAttribute("Windows10.0.22621.0")]
 

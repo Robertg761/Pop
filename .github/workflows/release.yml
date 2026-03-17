@@ -1,0 +1,216 @@
+name: Release (Windows)
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - Directory.Build.props
+
+permissions:
+  contents: write
+
+jobs:
+  validate:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 2
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Verify version bump
+        shell: pwsh
+        env:
+          PUSH_BEFORE: ${{ github.event.before }}
+        run: |
+          $baseRef = $env:PUSH_BEFORE
+          if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
+            $baseRef = (git rev-parse HEAD^).Trim()
+          }
+
+          if ([string]::IsNullOrWhiteSpace($baseRef)) {
+            throw 'Unable to determine the previous commit for version comparison.'
+          }
+
+          $changedFiles = @(git diff --name-only $baseRef HEAD)
+          if (-not ($changedFiles -contains 'Directory.Build.props')) {
+            throw 'Release runs require a Directory.Build.props version change.'
+          }
+
+          $currentProps = [xml](Get-Content Directory.Build.props)
+          $previousPropsText = git show "${baseRef}:Directory.Build.props"
+          if ([string]::IsNullOrWhiteSpace($previousPropsText)) {
+            throw 'Unable to load Directory.Build.props from the previous commit.'
+          }
+
+          $previousProps = [xml]$previousPropsText
+
+          function Get-VersionValue([xml]$xmlDocument) {
+            $value = $xmlDocument.Project.PropertyGroup.Version | Select-Object -First 1
+            if ([string]::IsNullOrWhiteSpace($value)) {
+              throw 'Directory.Build.props must define a Version property.'
+            }
+
+            return $value.Trim()
+          }
+
+          function Parse-Version([string]$value) {
+            $match = [regex]::Match($value, '^(\d+)\.(\d+)\.(\d+)(?:[-+].*)?$')
+            if (-not $match.Success) {
+              throw "Invalid semantic version: $value"
+            }
+
+            return [version]::new(
+              [int]$match.Groups[1].Value,
+              [int]$match.Groups[2].Value,
+              [int]$match.Groups[3].Value)
+          }
+
+          $currentVersion = Get-VersionValue $currentProps
+          $previousVersion = Get-VersionValue $previousProps
+
+          if ((Parse-Version $currentVersion) -le (Parse-Version $previousVersion)) {
+            throw "Version must increase for a release. Current=$currentVersion Previous=$previousVersion"
+          }
+
+          Write-Host "Validated version bump $previousVersion -> $currentVersion"
+
+      - name: Test solution
+        run: dotnet test Pop.sln --configuration Release
+
+  release:
+    needs: validate
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read release metadata
+        id: meta
+        shell: pwsh
+        run: |
+          $json = dotnet msbuild -nologo `
+            -getProperty:Version `
+            -getProperty:PopVelopackVersion `
+            -getProperty:PopVelopackPackId `
+            -getProperty:PopPublishRuntimeIdentifier `
+            -getProperty:RepositoryUrl `
+            -getProperty:Product `
+            -getProperty:Authors `
+            .\Pop.App\Pop.App.csproj | ConvertFrom-Json
+
+          "version=$($json.Properties.Version)" >> $env:GITHUB_OUTPUT
+          "velopack_version=$($json.Properties.PopVelopackVersion)" >> $env:GITHUB_OUTPUT
+          "pack_id=$($json.Properties.PopVelopackPackId)" >> $env:GITHUB_OUTPUT
+          "runtime=$($json.Properties.PopPublishRuntimeIdentifier)" >> $env:GITHUB_OUTPUT
+          "repo_url=$($json.Properties.RepositoryUrl)" >> $env:GITHUB_OUTPUT
+          "product=$($json.Properties.Product)" >> $env:GITHUB_OUTPUT
+          "authors=$($json.Properties.Authors)" >> $env:GITHUB_OUTPUT
+
+      - name: Check for previous release
+        id: releases
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $headers = @{
+            Accept = 'application/vnd.github+json'
+            Authorization = "Bearer $env:GITHUB_TOKEN"
+            'User-Agent' = 'Pop Release Workflow'
+          }
+
+          $response = Invoke-RestMethod `
+            -Uri "https://api.github.com/repos/${{ github.repository }}/releases?per_page=1" `
+            -Headers $headers
+
+          $hasRelease = @($response).Count -gt 0
+          "has_release=$($hasRelease.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+
+      - name: Install Velopack CLI
+        shell: pwsh
+        run: |
+          dotnet tool install --global vpk --version ${{ steps.meta.outputs.velopack_version }}
+          "$env:USERPROFILE\.dotnet\tools" | Out-File -FilePath $env:GITHUB_PATH -Encoding utf8 -Append
+
+      - name: Publish app
+        shell: pwsh
+        run: |
+          $publishDir = Join-Path $PWD 'artifacts\publish'
+          $releaseDir = Join-Path $PWD 'artifacts\Releases'
+
+          if (Test-Path $publishDir) {
+            Remove-Item $publishDir -Recurse -Force
+          }
+
+          if (Test-Path $releaseDir) {
+            Remove-Item $releaseDir -Recurse -Force
+          }
+
+          dotnet publish .\Pop.App\Pop.App.csproj `
+            --configuration Release `
+            --runtime ${{ steps.meta.outputs.runtime }} `
+            --self-contained true `
+            --output $publishDir
+
+      - name: Download previous release packages
+        if: ${{ steps.releases.outputs.has_release == 'true' }}
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk download github `
+            --repoUrl "${{ steps.meta.outputs.repo_url }}" `
+            --token "$env:GITHUB_TOKEN" `
+            --channel win `
+            --outputDir .\artifacts\Releases
+
+      - name: Pack installer
+        shell: pwsh
+        run: |
+          vpk pack `
+            --packId "${{ steps.meta.outputs.pack_id }}" `
+            --packVersion "${{ steps.meta.outputs.version }}" `
+            --packDir .\artifacts\publish `
+            --mainExe Pop.App.exe `
+            --packTitle "${{ steps.meta.outputs.product }}" `
+            --packAuthors "${{ steps.meta.outputs.authors }}" `
+            --runtime "${{ steps.meta.outputs.runtime }}" `
+            --channel win `
+            --noPortable `
+            --outputDir .\artifacts\Releases
+
+          Get-ChildItem .\artifacts\Releases -Filter *-Portable.zip | Remove-Item -Force
+
+      - name: Upload release to GitHub
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          vpk upload github `
+            --repoUrl "${{ steps.meta.outputs.repo_url }}" `
+            --token "$env:GITHUB_TOKEN" `
+            --channel win `
+            --outputDir .\artifacts\Releases `
+            --releaseName "Pop v${{ steps.meta.outputs.version }}" `
+            --tag "v${{ steps.meta.outputs.version }}" `
+            --targetCommitish "${{ github.sha }}" `
+            --merge `
+            --publish
+
+      - name: Upload release artifacts
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pop-release
+          path: artifacts/Releases/*

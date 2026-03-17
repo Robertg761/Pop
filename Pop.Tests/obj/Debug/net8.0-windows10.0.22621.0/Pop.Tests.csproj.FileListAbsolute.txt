@@ -289,3 +289,10 @@ G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\.artifacts\testbuild
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\.artifacts\testbuild-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.dll
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\.artifacts\testbuild-no-overlay\Debug\net8.0-windows10.0.22621.0\Pop.Core.pdb
 G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\obj\Debug\net8.0-windows10.0.22621.0\Pop.Tests.sourcelink.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Pop.App.deps.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Pop.App.runtimeconfig.json
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Pop.App.exe
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\NuGet.Versioning.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Velopack.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Pop.App.dll
+G:\Projects\Current Work in Progress Projects\Pop\Pop.Tests\bin\Debug\net8.0-windows10.0.22621.0\Pop.App.pdb

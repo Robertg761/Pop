@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows;
+using Pop.App.Services;
 using Pop.App.ViewModels;
 using Pop.Core.Models;
 
@@ -8,13 +9,17 @@ namespace Pop.App;
 public partial class SettingsWindow : Window
 {
     private readonly SettingsViewModel _viewModel;
+    private readonly IUpdateService _updateService;
     private bool _allowClose;
 
-    public SettingsWindow(AppSettings settings)
+    internal SettingsWindow(AppSettings settings, IUpdateService updateService)
     {
         InitializeComponent();
         _viewModel = SettingsViewModel.FromSettings(settings);
+        _updateService = updateService;
         DataContext = _viewModel;
+        _updateService.StateChanged += OnUpdateStateChanged;
+        ApplyUpdateState(_updateService.CurrentState);
     }
 
     public event EventHandler<AppSettings>? SettingsSaved;
@@ -37,6 +42,7 @@ public partial class SettingsWindow : Window
 
     public void ClosePermanently()
     {
+        _updateService.StateChanged -= OnUpdateStateChanged;
         _allowClose = true;
         Close();
     }
@@ -68,5 +74,59 @@ public partial class SettingsWindow : Window
     private void CancelButton_OnClick(object sender, RoutedEventArgs e)
     {
         Hide();
+    }
+
+    private async void CheckUpdatesButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        try
+        {
+            await _updateService.CheckNowAsync();
+        }
+        catch (Exception exception)
+        {
+            System.Windows.MessageBox.Show(this, exception.Message, "Update Check Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
+    }
+
+    private void InstallUpdateButton_OnClick(object sender, RoutedEventArgs e)
+    {
+        _updateService.ApplyPendingUpdateAndRestart();
+    }
+
+    private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
+    {
+        if (Dispatcher.CheckAccess())
+        {
+            ApplyUpdateState(e.State);
+            return;
+        }
+
+        Dispatcher.Invoke(() => ApplyUpdateState(e.State));
+    }
+
+    private void ApplyUpdateState(UpdateState state)
+    {
+        CurrentVersionTextBlock.Text = $"Version {state.CurrentVersion}";
+        UpdateStatusTextBlock.Text = state.Message;
+        CheckUpdatesButton.IsEnabled = state.CanCheck;
+
+        if (state.Status == UpdateStatus.Downloading && state.DownloadProgressPercent is int progress)
+        {
+            UpdateProgressPanel.Visibility = Visibility.Visible;
+            UpdateProgressBar.Value = progress;
+            UpdateProgressTextBlock.Text = $"{progress}% downloaded";
+        }
+        else
+        {
+            UpdateProgressPanel.Visibility = Visibility.Collapsed;
+            UpdateProgressBar.Value = 0;
+            UpdateProgressTextBlock.Text = "0%";
+        }
+
+        InstallUpdateButton.Visibility = state.CanInstall ? Visibility.Visible : Visibility.Collapsed;
+        InstallUpdateButton.IsEnabled = state.CanInstall;
+        InstallUpdateButton.Content = state.CanInstall && !string.IsNullOrWhiteSpace(state.AvailableVersion)
+            ? $"Install v{state.AvailableVersion}"
+            : "Install Update";
     }
 }

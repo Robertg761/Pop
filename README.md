@@ -27,12 +27,24 @@ Pop currently targets a focused v1 workflow:
 
 ## Requirements
 
-- Windows 10/11
-- .NET 8 SDK
+- Windows 10/11 for end users
+- .NET 8 SDK for building from source
 
 The solution targets `net8.0-windows10.0.22621.0` and uses WPF plus WinForms interop for the tray icon.
 
-## Getting Started
+## Download & Install
+
+Pop is now set up for installer-first releases:
+
+1. Download the latest `Setup.exe` from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page.
+2. Run the installer and launch Pop from the Start menu or desktop shortcut.
+3. Open `Settings` from the tray icon to tune behavior and check update status.
+
+Installed builds check GitHub for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready.
+
+In-app updates only work from an installed GitHub release. Local `dotnet run` builds still run normally, but they show update controls as unavailable.
+
+## Build From Source
 
 Restore, build, and test:
 
@@ -75,6 +87,13 @@ Available settings:
 - `GlideDurationMs`: Duration of the snap animation.
 - `EnableDiagnostics`: Enables local diagnostic logging.
 
+The settings window also includes an `Updates` section that shows:
+
+- the currently running version
+- automatic/manual update status
+- download progress when an update is being prepared
+- an install button when a downloaded update is ready
+
 ## Diagnostics
 
 When diagnostics are enabled, Pop appends compact JSON log lines to:
@@ -104,3 +123,6 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 - `Pop.Core` contains nearly all behavior worth unit testing.
 - The app is tray-first by design, so there is no main window on launch.
 - Tests currently pass with `dotnet test Pop.sln`.
+- Shared release metadata lives in `Directory.Build.props`.
+- A push to `main` that bumps `Version` in `Directory.Build.props` triggers the Windows release workflow in `.github/workflows/release.yml`.
+- For a local installer build, run `.\scripts\package-release.ps1`.

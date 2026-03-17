@@ -13,6 +13,7 @@ public sealed class PopHost : IDisposable
 {
     private readonly ISettingsStore _settingsStore;
     private readonly StartupRegistrationService _startupRegistrationService;
+    private readonly IUpdateService _updateService;
     private readonly IDragTracker _dragTracker;
     private readonly ISnapDecider _snapDecider;
     private readonly IWindowAnimator _windowAnimator;
@@ -21,14 +22,21 @@ public sealed class PopHost : IDisposable
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Forms.ToolStripMenuItem _enabledMenuItem;
     private readonly Forms.ToolStripMenuItem _launchAtStartupMenuItem;
+    private readonly Forms.ToolStripMenuItem _versionMenuItem;
+    private readonly Forms.ToolStripMenuItem _updateStatusMenuItem;
+    private readonly Forms.ToolStripMenuItem _checkForUpdatesMenuItem;
+    private readonly Forms.ToolStripMenuItem _installUpdateMenuItem;
 
     private AppSettings _settings = new();
     private SettingsWindow? _settingsWindow;
+    private UpdateState _lastUpdateState;
+    private string? _lastNotifiedReadyVersion;
 
     public PopHost()
     {
         _settingsStore = new JsonSettingsStore();
         _startupRegistrationService = new StartupRegistrationService();
+        _updateService = new UpdateService();
         _snapDecider = new SnapDecider();
         _windowAnimator = new WindowAnimator();
 
@@ -41,6 +49,19 @@ public sealed class PopHost : IDisposable
 
         _enabledMenuItem = new Forms.ToolStripMenuItem("Enable Pop", null, async (_, _) => await ToggleEnabledAsync());
         _launchAtStartupMenuItem = new Forms.ToolStripMenuItem("Launch At Startup", null, async (_, _) => await ToggleLaunchAtStartupAsync());
+        _versionMenuItem = new Forms.ToolStripMenuItem($"Version {AppReleaseMetadata.CurrentVersion}")
+        {
+            Enabled = false
+        };
+        _updateStatusMenuItem = new Forms.ToolStripMenuItem("Updates: Starting...")
+        {
+            Enabled = false
+        };
+        _checkForUpdatesMenuItem = new Forms.ToolStripMenuItem("Check For Updates", null, async (_, _) => await CheckForUpdatesAsync());
+        _installUpdateMenuItem = new Forms.ToolStripMenuItem("Install Update", null, (_, _) => _updateService.ApplyPendingUpdateAndRestart())
+        {
+            Visible = false
+        };
 
         var openSettingsMenuItem = new Forms.ToolStripMenuItem("Open Settings", null, (_, _) => OpenSettingsWindow());
         var exitMenuItem = new Forms.ToolStripMenuItem("Exit", null, (_, _) => Application.Current.Shutdown());
@@ -50,6 +71,11 @@ public sealed class PopHost : IDisposable
         [
             _enabledMenuItem,
             _launchAtStartupMenuItem,
+            new Forms.ToolStripSeparator(),
+            _versionMenuItem,
+            _updateStatusMenuItem,
+            _checkForUpdatesMenuItem,
+            _installUpdateMenuItem,
             new Forms.ToolStripSeparator(),
             openSettingsMenuItem,
             new Forms.ToolStripSeparator(),
@@ -65,6 +91,9 @@ public sealed class PopHost : IDisposable
         };
 
         _notifyIcon.DoubleClick += (_, _) => OpenSettingsWindow();
+        _lastUpdateState = _updateService.CurrentState;
+        _updateService.StateChanged += OnUpdateStateChanged;
+        ApplyUpdateState(_lastUpdateState);
     }
 
     public async Task InitializeAsync()
@@ -72,6 +101,7 @@ public sealed class PopHost : IDisposable
         _settings = await _settingsStore.LoadAsync(_disposeCancellation.Token);
         _startupRegistrationService.SetLaunchAtStartup(_settings.LaunchAtStartup);
         UpdateMenuState();
+        await _updateService.StartAsync(_disposeCancellation.Token);
         _dragTracker.Start();
     }
 
@@ -84,6 +114,8 @@ public sealed class PopHost : IDisposable
         _dragTracker.DragUpdated -= OnDragUpdated;
         _dragTracker.DragCompleted -= OnDragCompleted;
         _dragTracker.Dispose();
+        _updateService.StateChanged -= OnUpdateStateChanged;
+        _updateService.Dispose();
         _diagnosticsLogService.Dispose();
 
         if (_settingsWindow is not null)
@@ -190,7 +222,7 @@ public sealed class PopHost : IDisposable
 
     private SettingsWindow CreateSettingsWindow()
     {
-        var window = new SettingsWindow(_settings);
+        var window = new SettingsWindow(_settings, _updateService);
         window.SettingsSaved += OnSettingsSaved;
         return window;
     }
@@ -208,6 +240,11 @@ public sealed class PopHost : IDisposable
     private async Task ToggleLaunchAtStartupAsync()
     {
         await ApplySettingsAsync(_settings with { LaunchAtStartup = !_settings.LaunchAtStartup });
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        await _updateService.CheckNowAsync(_disposeCancellation.Token);
     }
 
     private async Task ApplySettingsAsync(AppSettings settings)
@@ -236,6 +273,66 @@ public sealed class PopHost : IDisposable
         _enabledMenuItem.Checked = _settings.Enabled;
         _launchAtStartupMenuItem.Checked = _settings.LaunchAtStartup;
         _notifyIcon.Text = _settings.Enabled ? "Pop - Enabled" : "Pop - Disabled";
+        _versionMenuItem.Text = $"Version {AppReleaseMetadata.CurrentVersion}";
+    }
+
+    private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
+    {
+        if (Application.Current.Dispatcher.CheckAccess())
+        {
+            ApplyUpdateState(e.State);
+            return;
+        }
+
+        Application.Current.Dispatcher.Invoke(() => ApplyUpdateState(e.State));
+    }
+
+    private void ApplyUpdateState(UpdateState state)
+    {
+        var previousState = _lastUpdateState;
+        _lastUpdateState = state;
+
+        _updateStatusMenuItem.Text = GetUpdateMenuText(state);
+        _checkForUpdatesMenuItem.Enabled = state.CanCheck;
+        _installUpdateMenuItem.Visible = state.CanInstall;
+        _installUpdateMenuItem.Enabled = state.CanInstall;
+        _installUpdateMenuItem.Text = state.CanInstall && !string.IsNullOrWhiteSpace(state.AvailableVersion)
+            ? $"Install Update v{state.AvailableVersion}"
+            : "Install Update";
+
+        if (state.Status == UpdateStatus.ReadyToInstall
+            && !string.Equals(_lastNotifiedReadyVersion, state.AvailableVersion, StringComparison.Ordinal)
+            && previousState.Status != UpdateStatus.ReadyToInstall)
+        {
+            _lastNotifiedReadyVersion = state.AvailableVersion;
+            ShowUpdateReadyNotification(state);
+        }
+
+        if (state.Status != UpdateStatus.ReadyToInstall)
+        {
+            _lastNotifiedReadyVersion = null;
+        }
+    }
+
+    private void ShowUpdateReadyNotification(UpdateState state)
+    {
+        _notifyIcon.BalloonTipTitle = "Pop update ready";
+        _notifyIcon.BalloonTipText = string.IsNullOrWhiteSpace(state.AvailableVersion)
+            ? "Restart Pop to finish installing the downloaded update."
+            : $"Restart Pop to install v{state.AvailableVersion}.";
+        _notifyIcon.ShowBalloonTip(5000);
+    }
+
+    private static string GetUpdateMenuText(UpdateState state)
+    {
+        return state.Status switch
+        {
+            UpdateStatus.Downloading when state.DownloadProgressPercent is int progress =>
+                $"Updates: Downloading {progress}%",
+            UpdateStatus.ReadyToInstall when !string.IsNullOrWhiteSpace(state.AvailableVersion) =>
+                $"Updates: Ready to install v{state.AvailableVersion}",
+            _ => $"Updates: {state.Message}"
+        };
     }
 
     private void LogDiagnostics(string category, string message, IReadOnlyDictionary<string, string?>? fields = null)

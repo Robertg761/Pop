@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\Pop.Core\Pop.Core.csproj" />
+    <ProjectReference Include="..\Pop.App\Pop.App.csproj" />
   </ItemGroup>
 
 </Project>
