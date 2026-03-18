@@ -307,7 +307,9 @@ jobs:
 
           $releaseData = gh release view $releaseTag --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
           $assetsToDelete = @($releaseData.assets | Where-Object {
-            $_.name -ne $setupAsset.Name -and $_.name -notlike 'Pop-macos-arm64-*.zip'
+            $_.name -ne $setupAsset.Name -and
+            $_.name -notlike 'Pop-macos-arm64-*.zip' -and
+            $_.name -notlike 'Pop-macos-arm64-*.dmg'
           })
           foreach ($asset in $assetsToDelete) {
             & gh release delete-asset $releaseTag $asset.name --repo "${{ github.repository }}" --yes
@@ -356,10 +358,21 @@ jobs:
         id: package
         shell: bash
         run: |
-          zip_path="$(./scripts/package-mac-release.sh | tail -n 1)"
-          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          package_output="$(./scripts/package-mac-release.sh)"
+          echo "$package_output"
 
-      - name: Upload macOS zip to GitHub release
+          zip_path="$(printf '%s\n' "$package_output" | grep '^zip_path=' | tail -n 1 | cut -d= -f2-)"
+          dmg_path="$(printf '%s\n' "$package_output" | grep '^dmg_path=' | tail -n 1 | cut -d= -f2-)"
+
+          if [[ -z "$zip_path" || -z "$dmg_path" ]]; then
+            echo "Unable to read macOS package output paths." >&2
+            exit 1
+          fi
+
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+          echo "dmg_path=$dmg_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload macOS assets to GitHub release
         shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -367,17 +380,23 @@ jobs:
         run: |
           release_tag="v${{ steps.meta.outputs.version }}"
           zip_asset="${{ steps.package.outputs.zip_path }}"
+          dmg_asset="${{ steps.package.outputs.dmg_path }}"
 
           if [[ ! -f "$zip_asset" ]]; then
             echo "Unable to find the generated macOS zip asset." >&2
             exit 1
           fi
 
+          if [[ ! -f "$dmg_asset" ]]; then
+            echo "Unable to find the generated macOS dmg asset." >&2
+            exit 1
+          fi
+
           if gh release view "$release_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$release_tag" "$zip_asset" --repo "${{ github.repository }}" --clobber
+            gh release upload "$release_tag" "$zip_asset" "$dmg_asset" --repo "${{ github.repository }}" --clobber
           else
             create_args=(
-              release create "$release_tag" "$zip_asset"
+              release create "$release_tag" "$zip_asset" "$dmg_asset"
               --repo "${{ github.repository }}"
               --title "Pop v${{ steps.meta.outputs.version }}"
               --target "${{ github.sha }}"
@@ -388,12 +407,12 @@ jobs:
             fi
 
             if ! gh "${create_args[@]}"; then
-              gh release upload "$release_tag" "$zip_asset" --repo "${{ github.repository }}" --clobber
+              gh release upload "$release_tag" "$zip_asset" "$dmg_asset" --repo "${{ github.repository }}" --clobber
             fi
           fi
 
           release_json="$(gh release view "$release_tag" --repo "${{ github.repository }}" --json assets)"
-          python3 - "$release_json" "$release_tag" "${{ github.repository }}" "$(basename "$zip_asset")" <<'PY'
+          python3 - "$release_json" "$release_tag" "${{ github.repository }}" "$(basename "$zip_asset")" "$(basename "$dmg_asset")" <<'PY'
           import json
           import subprocess
           import sys
@@ -401,11 +420,11 @@ jobs:
           release = json.loads(sys.argv[1])
           release_tag = sys.argv[2]
           repo = sys.argv[3]
-          keep_asset = sys.argv[4]
+          keep_assets = {sys.argv[4], sys.argv[5]}
 
           for asset in release.get("assets", []):
               name = asset.get("name", "")
-              if name == keep_asset or name.endswith("-Setup.exe"):
+              if name in keep_assets or name.endswith("-Setup.exe"):
                   continue
 
               subprocess.run(
