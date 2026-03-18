@@ -2,6 +2,8 @@
 
 Pop is a Windows tray app that adds momentum-based window snapping. Drag a window by its title bar, flick left or right, and Pop animates the window into the corresponding half of the current monitor.
 
+Windows support exists today. A macOS app is planned, and the repo is now organized so shared logic, platform abstractions, and OS-specific app code live in clearly separate places.
+
 ## What It Does
 
 - Runs quietly from the system tray.
@@ -23,16 +25,19 @@ Pop currently targets a focused v1 workflow:
 
 ## Solution Layout
 
-- `Pop.App`: WPF tray application, settings window, startup registration, diagnostics logging, and host wiring.
-- `Pop.Core`: Core gesture tracking, window inspection, snap decision logic, tile calculations, and animation planning.
-- `Pop.Tests`: xUnit tests covering settings persistence, snap qualification, tile calculations, animation planning, and eligibility rules.
+- `src/Pop.Core`: Shared business logic and models such as gesture qualification, snap decisions, tile calculations, animation planning, settings persistence, and diagnostics formatting.
+- `src/Pop.Platform.Abstractions`: Platform-facing contracts for drag observation, window inspection, window movement, startup registration, and future shell integration seams.
+- `src/Pop.App.Windows`: The current Windows app plus Win32/WPF implementations of the platform abstractions.
+- `src/Pop.App.Mac`: Placeholder scaffold for the future macOS app.
+- `tests/Pop.Tests`: Cross-platform xUnit tests for shared logic in `Pop.Core`.
+- `tests/Pop.Tests.Windows`: Windows-targeted xUnit tests for the current Windows adapters and update flow.
 
 ## Requirements
 
 - Windows 10/11 for end users
 - .NET 8 SDK for building from source
 
-The solution targets `net8.0-windows10.0.22621.0` and uses WPF plus WinForms interop for the tray icon.
+`Pop.Core`, `Pop.Platform.Abstractions`, and the Mac placeholder target `net8.0`. The Windows app and test project target `net8.0-windows10.0.22621.0` and use WPF plus WinForms interop for the tray icon.
 
 ## Download & Install
 
@@ -60,7 +65,7 @@ dotnet test Pop.sln
 Run the app:
 
 ```powershell
-dotnet run --project .\Pop.App\Pop.App.csproj
+dotnet run --project .\src\Pop.App.Windows\Pop.App.Windows.csproj
 ```
 
 When the app starts, it lives in the system tray. Double-click the tray icon or use `Open Settings` from the tray menu to configure it.
@@ -124,8 +129,10 @@ HKCU\Software\Microsoft\Windows\CurrentVersion\Run
 
 ## Development Notes
 
-- `Pop.App` is the executable entry point.
-- `Pop.Core` contains nearly all behavior worth unit testing.
+- `src/Pop.App.Windows` is the current executable entry point.
+- `src/Pop.Core` contains the shared behavior worth preserving across Windows and macOS.
+- `src/Pop.Platform.Abstractions` marks the intended seam between shared logic and OS-specific integration code.
+- `src/Pop.App.Mac` is intentionally only a scaffold right now.
 - The app is tray-first by design, so there is no main window on launch.
 - Tests currently pass with `dotnet test Pop.sln`.
 - Shared release metadata lives in `Directory.Build.props`.

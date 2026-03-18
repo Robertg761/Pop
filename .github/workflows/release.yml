@@ -148,7 +148,7 @@ jobs:
             -getProperty:PopUpdateFeedPath `
             -getProperty:Product `
             -getProperty:Authors `
-            .\Pop.App\Pop.App.csproj | ConvertFrom-Json
+            .\src\Pop.App.Windows\Pop.App.Windows.csproj | ConvertFrom-Json
 
           "version=$($json.Properties.Version)" >> $env:GITHUB_OUTPUT
           "velopack_version=$($json.Properties.PopVelopackVersion)" >> $env:GITHUB_OUTPUT
@@ -180,7 +180,7 @@ jobs:
             Remove-Item $releaseDir -Recurse -Force
           }
 
-          dotnet publish .\Pop.App\Pop.App.csproj `
+          dotnet publish .\src\Pop.App.Windows\Pop.App.Windows.csproj `
             --configuration Release `
             --runtime ${{ steps.meta.outputs.runtime }} `
             --self-contained true `

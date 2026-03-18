@@ -19,7 +19,7 @@ $metadataJson = dotnet msbuild -nologo `
     -getProperty:PopUpdateFeedPath `
     -getProperty:Product `
     -getProperty:Authors `
-    .\Pop.App\Pop.App.csproj
+    .\src\Pop.App.Windows\Pop.App.Windows.csproj
 
 $metadata = $metadataJson | ConvertFrom-Json
 $version = $metadata.Properties.Version
@@ -50,7 +50,7 @@ if (-not $SkipTests) {
     dotnet test .\Pop.sln --configuration Release
 }
 
-dotnet publish .\Pop.App\Pop.App.csproj `
+dotnet publish .\src\Pop.App.Windows\Pop.App.Windows.csproj `
     --configuration Release `
     --runtime $runtime `
     --self-contained true `
