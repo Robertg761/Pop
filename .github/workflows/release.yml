@@ -379,25 +379,25 @@ jobs:
 
           release_json="$(gh release view "$release_tag" --repo "${{ github.repository }}" --json assets)"
           python3 - "$release_json" "$release_tag" "${{ github.repository }}" "$(basename "$zip_asset")" <<'PY'
-import json
-import subprocess
-import sys
+          import json
+          import subprocess
+          import sys
 
-release = json.loads(sys.argv[1])
-release_tag = sys.argv[2]
-repo = sys.argv[3]
-keep_asset = sys.argv[4]
+          release = json.loads(sys.argv[1])
+          release_tag = sys.argv[2]
+          repo = sys.argv[3]
+          keep_asset = sys.argv[4]
 
-for asset in release.get("assets", []):
-    name = asset.get("name", "")
-    if name == keep_asset or name.endswith("-Setup.exe"):
-        continue
+          for asset in release.get("assets", []):
+              name = asset.get("name", "")
+              if name == keep_asset or name.endswith("-Setup.exe"):
+                  continue
 
-    subprocess.run(
-        ["gh", "release", "delete-asset", release_tag, name, "--repo", repo, "--yes"],
-        check=True,
-    )
-PY
+              subprocess.run(
+                  ["gh", "release", "delete-asset", release_tag, name, "--repo", repo, "--yes"],
+                  check=True,
+              )
+          PY
 
       - name: Upload macOS release artifact
         if: ${{ always() }}
