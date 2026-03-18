@@ -6,6 +6,13 @@ on:
       - main
     paths:
       - Directory.Build.props
+  workflow_dispatch:
+    inputs:
+      force_release:
+        description: Bypass version-bump validation and run the release manually.
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
@@ -31,8 +38,16 @@ jobs:
         id: version_gate
         shell: pwsh
         env:
+          MANUAL_FORCE_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.force_release }}
           PUSH_BEFORE: ${{ github.event.before }}
         run: |
+          $manualForceRelease = "$env:MANUAL_FORCE_RELEASE".Trim().ToLowerInvariant() -eq 'true'
+          if ($manualForceRelease) {
+            "should_release=true" >> $env:GITHUB_OUTPUT
+            Write-Host 'Manual workflow_dispatch run requested with force_release=true. Skipping version-bump validation.'
+            exit 0
+          }
+
           $baseRef = $env:PUSH_BEFORE
           if ([string]::IsNullOrWhiteSpace($baseRef) -or $baseRef -match '^0+$') {
             $baseRef = (git rev-parse HEAD^).Trim()
@@ -320,7 +335,7 @@ jobs:
 
       - name: Read release version
         id: meta
-        shell: zsh
+        shell: bash
         run: |
           version="$(dotnet msbuild -nologo -getProperty:Version ./src/Pop.App.Mac/Pop.App.Mac.csproj | tail -n 1)"
           echo "version=$version" >> "$GITHUB_OUTPUT"
@@ -339,13 +354,13 @@ jobs:
 
       - name: Package macOS app
         id: package
-        shell: zsh
+        shell: bash
         run: |
           zip_path="$(./scripts/package-mac-release.sh | tail -n 1)"
           echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload macOS zip to GitHub release
-        shell: zsh
+        shell: bash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
