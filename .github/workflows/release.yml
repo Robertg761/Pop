@@ -1,4 +1,4 @@
-name: Release (Windows)
+name: Release
 
 on:
   push:
@@ -291,7 +291,9 @@ jobs:
           }
 
           $releaseData = gh release view $releaseTag --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
-          $assetsToDelete = @($releaseData.assets | Where-Object { $_.name -ne $setupAsset.Name })
+          $assetsToDelete = @($releaseData.assets | Where-Object {
+            $_.name -ne $setupAsset.Name -and $_.name -notlike 'Pop-macos-arm64-*.zip'
+          })
           foreach ($asset in $assetsToDelete) {
             & gh release delete-asset $releaseTag $asset.name --repo "${{ github.repository }}" --yes
           }
@@ -302,3 +304,104 @@ jobs:
         with:
           name: pop-release
           path: artifacts/Releases/*
+
+  release-macos:
+    needs: validate
+    if: ${{ needs.validate.outputs.should_release == 'true' }}
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read release version
+        id: meta
+        shell: zsh
+        run: |
+          version="$(dotnet msbuild -nologo -getProperty:Version ./src/Pop.App.Mac/Pop.App.Mac.csproj | tail -n 1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test shared .NET suite
+        run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
+
+      - name: Make macOS scripts executable
+        run: chmod +x ./scripts/build-mac-bridge.sh ./scripts/build-mac-app.sh ./scripts/package-mac-release.sh
+
+      - name: Build macOS bridge
+        run: ./scripts/build-mac-bridge.sh
+
+      - name: Test macOS Swift package
+        run: swift test --package-path src/Pop.App.Mac/NativeHost
+
+      - name: Package macOS app
+        id: package
+        shell: zsh
+        run: |
+          zip_path="$(./scripts/package-mac-release.sh | tail -n 1)"
+          echo "zip_path=$zip_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload macOS zip to GitHub release
+        shell: zsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_tag="v${{ steps.meta.outputs.version }}"
+          zip_asset="${{ steps.package.outputs.zip_path }}"
+
+          if [[ ! -f "$zip_asset" ]]; then
+            echo "Unable to find the generated macOS zip asset." >&2
+            exit 1
+          fi
+
+          if gh release view "$release_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$release_tag" "$zip_asset" --repo "${{ github.repository }}" --clobber
+          else
+            create_args=(
+              release create "$release_tag" "$zip_asset"
+              --repo "${{ github.repository }}"
+              --title "Pop v${{ steps.meta.outputs.version }}"
+              --target "${{ github.sha }}"
+            )
+
+            if [[ "${{ steps.meta.outputs.version }}" == *-* ]]; then
+              create_args+=(--prerelease)
+            fi
+
+            if ! gh "${create_args[@]}"; then
+              gh release upload "$release_tag" "$zip_asset" --repo "${{ github.repository }}" --clobber
+            fi
+          fi
+
+          release_json="$(gh release view "$release_tag" --repo "${{ github.repository }}" --json assets)"
+          python3 - "$release_json" "$release_tag" "${{ github.repository }}" "$(basename "$zip_asset")" <<'PY'
+import json
+import subprocess
+import sys
+
+release = json.loads(sys.argv[1])
+release_tag = sys.argv[2]
+repo = sys.argv[3]
+keep_asset = sys.argv[4]
+
+for asset in release.get("assets", []):
+    name = asset.get("name", "")
+    if name == keep_asset or name.endswith("-Setup.exe"):
+        continue
+
+    subprocess.run(
+        ["gh", "release", "delete-asset", release_tag, name, "--repo", repo, "--yes"],
+        check=True,
+    )
+PY
+
+      - name: Upload macOS release artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: pop-release-macos
+          path: artifacts/mac/release/*

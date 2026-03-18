@@ -3,3 +3,8 @@ artifacts/
 **/bin/
 **/obj/
 **/.artifacts/
+**/.DS_Store
+src/Pop.App.Mac/NativeHost/.build/
+src/Pop.App.Mac/NativeHost/.swiftpm/
+src/Pop.App.Mac/NativeHost/*.xcodeproj/
+src/Pop.App.Mac/NativeHost/*.xcworkspace/

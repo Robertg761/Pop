@@ -1,0 +1,5 @@
+module CPopMacBridge [system] {
+    header "include/PopMacBridge.h"
+    link "PopMacBridge"
+    export *
+}

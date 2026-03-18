@@ -1,12 +1,16 @@
 # Pop.App.Mac
 
-This folder is the reserved home for the future macOS app.
+This folder contains the macOS implementation for Pop.
 
-Planned responsibilities:
+Current responsibilities:
 
-- macOS app entry point and lifecycle
-- menu bar integration
-- macOS window/query/input implementations for `Pop.Platform.Abstractions`
-- wiring `Pop.Core` shared snap logic into the native app shell
+- Native AOT bridge exports from `Pop.Core` for snap decisions, tile bounds, animation plans, and diagnostics formatting
+- Native Swift/AppKit menu-bar host in `NativeHost`
+- Accessibility-permission onboarding, global drag tracking, AX-based window movement, diagnostics logging, and launch-at-login support
+- Packaging scripts that emit `Pop.app` and `Pop-macos-arm64-<version>.zip`
 
-No macOS behavior is implemented yet in this scaffold.
+Build locally:
+
+```zsh
+../../scripts/package-mac-release.sh
+```
