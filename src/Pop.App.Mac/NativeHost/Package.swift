@@ -31,6 +31,7 @@ let package = Package(
                 .linkedFramework("AppKit"),
                 .linkedFramework("ApplicationServices"),
                 .linkedFramework("CoreGraphics"),
+                .linkedFramework("IOKit"),
                 .unsafeFlags([
                     "-L", bridgeSearchPath,
                     "-Xlinker", "-rpath",

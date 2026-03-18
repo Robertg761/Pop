@@ -106,6 +106,7 @@ Available settings:
 - `Enabled`: Turns momentum snapping on or off.
 - `LaunchAtStartup`: Adds or removes Pop from the current user's Windows startup registry key.
 - `ThrowVelocityThresholdPxPerSec`: Minimum horizontal release velocity required to qualify.
+  On macOS, Pop automatically lowers the effective threshold when no external mouse is connected so touchpad flicks are easier to trigger.
 - `HorizontalDominanceRatio`: How strongly horizontal the gesture must be.
 - `GlideDurationMs`: Duration of the snap animation.
 - `EnableDiagnostics`: Enables local diagnostic logging.
