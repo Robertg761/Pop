@@ -12,7 +12,6 @@ final class SettingsWindowController: NSWindowController {
     private let dominanceField = NSTextField(string: "")
     private let glideDurationField = NSTextField(string: "")
     private let permissionLabel = NSTextField(labelWithString: "")
-    private let touchpadHintLabel = NSTextField(wrappingLabelWithString: "When no external mouse is connected, Pop automatically lowers the effective throw velocity threshold so touchpad flicks qualify more easily.")
 
     init() {
         let window = NSWindow(
@@ -69,7 +68,6 @@ final class SettingsWindowController: NSWindowController {
             launchAtStartupButton,
             diagnosticsButton,
             velocityRow,
-            touchpadHintLabel,
             dominanceRow,
             glideRow,
             permissionLabel,
@@ -80,7 +78,6 @@ final class SettingsWindowController: NSWindowController {
         stack.alignment = .leading
         stack.spacing = 12
         stack.translatesAutoresizingMaskIntoConstraints = false
-        touchpadHintLabel.textColor = .secondaryLabelColor
 
         contentView.addSubview(stack)
         NSLayoutConstraint.activate([

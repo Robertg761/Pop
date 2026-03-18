@@ -171,7 +171,6 @@ final class PopRuntimeController {
     private let launchAgentManager: LaunchAgentManager
     private let permissionCoordinator: AccessibilityPermissionCoordinator
     private let screenCoordinator = ScreenCoordinator()
-    private let externalMouseDetector = ExternalMouseDetector()
     private lazy var windowSystem = AccessibilityWindowSystem(screenCoordinator: screenCoordinator)
     private lazy var dragTracker = GlobalDragTracker(windowSystem: windowSystem, screenCoordinator: screenCoordinator)
     private let bridgeClient = PopMacBridgeClient()
@@ -263,9 +262,6 @@ final class PopRuntimeController {
 
     private func handleCompletedDrag(session: GlobalDragTracker.ActiveSession, isOptionPressed: Bool) {
         let monitors = screenCoordinator.screens()
-        let effectiveSettings = PointerSensitivityResolver.resolvedSettings(
-            from: settings,
-            hasExternalMouse: externalMouseDetector.hasExternalMouseConnected())
         let context = DragDecisionContext(
             initialMonitor: session.initialMonitor,
             currentMonitor: session.currentMonitor,
@@ -276,7 +272,7 @@ final class PopRuntimeController {
             samples: session.samples,
             monitors: monitors,
             context: context,
-            settings: effectiveSettings)
+            settings: settings)
 
         if !decision.isQualified {
             diagnosticsLogger.write(
@@ -286,8 +282,7 @@ final class PopRuntimeController {
                     "target": "\(decision.target)",
                     "reason": "\(decision.rejectionReason)",
                     "velocityX": "\(Int(decision.horizontalVelocityPxPerSec.rounded()))",
-                    "velocityY": "\(Int(decision.verticalVelocityPxPerSec.rounded()))",
-                    "throwVelocityThreshold": "\(Int(effectiveSettings.throwVelocityThresholdPxPerSec.rounded()))"
+                    "velocityY": "\(Int(decision.verticalVelocityPxPerSec.rounded()))"
                 ],
                 enabled: settings.enableDiagnostics)
             return
@@ -298,7 +293,7 @@ final class PopRuntimeController {
             startBounds: session.currentBounds,
             targetBounds: targetBounds,
             releaseVelocityX: decision.horizontalVelocityPxPerSec,
-            durationMs: effectiveSettings.glideDurationMs)
+            durationMs: settings.glideDurationMs)
 
         diagnosticsLogger.write(
             category: "drag-release",
