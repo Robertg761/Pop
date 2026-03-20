@@ -122,7 +122,16 @@ public static class MacBridgeRuntime
             }
         }
 
-        return fallbackMonitor;
+        if (monitors.Count == 0)
+        {
+            return fallbackMonitor;
+        }
+
+        var nearestMonitor = monitors
+            .OrderBy(monitor => GetDistanceSquared(point, monitor.Bounds))
+            .FirstOrDefault();
+
+        return nearestMonitor != MonitorInfo.Empty ? nearestMonitor : fallbackMonitor;
     }
 
     private static bool Contains(Rectangle rectangle, Point point)
@@ -132,6 +141,22 @@ public static class MacBridgeRuntime
                point.X < rectangle.Right &&
                point.Y >= rectangle.Top &&
                point.Y < rectangle.Bottom;
+    }
+
+    private static long GetDistanceSquared(Point point, Rectangle bounds)
+    {
+        var dx = point.X < bounds.Left
+            ? bounds.Left - point.X
+            : point.X >= bounds.Right
+                ? point.X - (bounds.Right - 1)
+                : 0;
+        var dy = point.Y < bounds.Top
+            ? bounds.Top - point.Y
+            : point.Y >= bounds.Bottom
+                ? point.Y - (bounds.Bottom - 1)
+                : 0;
+
+        return (dx * dx) + (dy * dy);
     }
 }
 

@@ -25,6 +25,7 @@ internal static class NativeMethods
     public const int DwmwaCloaked = 14;
     public const uint ProcessQueryLimitedInformation = 0x1000;
     public const uint TokenQuery = 0x0008;
+    public const uint SmtoAbortIfHung = 0x0002;
 
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
@@ -97,6 +98,16 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     public static extern IntPtr SendMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport("user32.dll", CharSet = CharSet.Auto, SetLastError = true)]
+    public static extern IntPtr SendMessageTimeout(
+        IntPtr hWnd,
+        uint msg,
+        IntPtr wParam,
+        IntPtr lParam,
+        uint fuFlags,
+        uint uTimeout,
+        out IntPtr lpdwResult);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -21,16 +21,45 @@ public sealed class JsonSettingsStore(string? settingsDirectory = null, string f
             return new AppSettings();
         }
 
-        await using var stream = File.OpenRead(SettingsPath);
-        var settings = await JsonSerializer.DeserializeAsync(stream, PopJsonContext.Default.AppSettings, cancellationToken);
-        return settings ?? new AppSettings();
+        try
+        {
+            await using var stream = File.OpenRead(SettingsPath);
+            var settings = await JsonSerializer.DeserializeAsync(stream, PopJsonContext.Default.AppSettings, cancellationToken);
+            return settings ?? new AppSettings();
+        }
+        catch (JsonException)
+        {
+            return new AppSettings();
+        }
     }
 
     public async Task SaveAsync(AppSettings settings, CancellationToken cancellationToken = default)
     {
         Directory.CreateDirectory(_settingsDirectory);
+        var temporaryPath = Path.Combine(_settingsDirectory, $"{_fileName}.{Guid.NewGuid():N}.tmp");
 
-        await using var stream = File.Create(SettingsPath);
-        await JsonSerializer.SerializeAsync(stream, settings, PopJsonContext.Default.AppSettings, cancellationToken);
+        try
+        {
+            await using (var stream = File.Create(temporaryPath))
+            {
+                await JsonSerializer.SerializeAsync(stream, settings, PopJsonContext.Default.AppSettings, cancellationToken);
+                await stream.FlushAsync(cancellationToken);
+            }
+
+            if (File.Exists(SettingsPath) && OperatingSystem.IsWindows())
+            {
+                File.Replace(temporaryPath, SettingsPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                return;
+            }
+
+            File.Move(temporaryPath, SettingsPath, overwrite: true);
+        }
+        finally
+        {
+            if (File.Exists(temporaryPath))
+            {
+                File.Delete(temporaryPath);
+            }
+        }
     }
 }

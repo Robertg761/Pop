@@ -14,6 +14,10 @@ public sealed class MacBridgeRuntimeTests
         new PopRectDto(1920, 0, 1920, 1080),
         new PopRectDto(1920, 0, 1920, 1040));
 
+    private static readonly PopMonitorInfoDto GappedRightMonitor = new(
+        new PopRectDto(2500, 0, 1920, 1080),
+        new PopRectDto(2500, 0, 1920, 1040));
+
     private static readonly PopAppSettingsDto Settings = new(
         enabled: 1,
         launchAtStartup: 0,
@@ -45,6 +49,31 @@ public sealed class MacBridgeRuntimeTests
         Assert.Equal((int)SnapTarget.RightHalf, decision.Target);
         Assert.Equal(1, decision.IsQualified);
         Assert.Equal(RightMonitor.Bounds.X, decision.TargetMonitor.Bounds.X);
+    }
+
+    [Fact]
+    public void EvaluateDragGestureManaged_UsesNearestMonitor_WhenProjectedLandingOvershootsAcrossAGap()
+    {
+        var origin = DateTimeOffset.UtcNow;
+        var samples = new[]
+        {
+            new PopDragSampleDto(400, 200, origin.ToUnixTimeMilliseconds()),
+            new PopDragSampleDto(1000, 210, origin.AddMilliseconds(50).ToUnixTimeMilliseconds()),
+            new PopDragSampleDto(1600, 220, origin.AddMilliseconds(100).ToUnixTimeMilliseconds())
+        };
+        var monitors = new[] { MainMonitor, GappedRightMonitor };
+        var context = new PopDragContextDto(
+            MainMonitor,
+            MainMonitor,
+            new PopRectDto(700, 100, 900, 700),
+            new PopRectDto(1150, 100, 900, 700),
+            isOptionPressedAtRelease: 1);
+
+        var decision = MacBridgeRuntime.EvaluateDragGestureManaged(samples, monitors, context, Settings);
+
+        Assert.Equal(1, decision.IsQualified);
+        Assert.Equal(GappedRightMonitor.Bounds.X, decision.TargetMonitor.Bounds.X);
+        Assert.Equal((int)SnapTarget.RightHalf, decision.Target);
     }
 
     [Fact]

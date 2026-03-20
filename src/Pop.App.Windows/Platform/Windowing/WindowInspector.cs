@@ -3,11 +3,13 @@ using Pop.App.Windows.Platform.Interop;
 using Pop.Core.Models;
 using Pop.Core.Services;
 using Pop.Platform.Abstractions.Windowing;
+using Forms = System.Windows.Forms;
 
 namespace Pop.App.Windows.Platform.Windowing;
 
 public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWindowInspector
 {
+    private const uint NcHitTestTimeoutMs = 50;
     private readonly WindowEligibilityEvaluator _evaluator = evaluator;
 
     public WindowInspectionResult InspectWindowAt(Point screenPoint)
@@ -107,7 +109,7 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
                                        (!hasOwner || isAppWindow);
 
         return new WindowTraits(
-            IsCaptionHit(windowHandle, screenPoint),
+            IsCaptionHit(windowHandle, screenPoint, bounds),
             NativeMethods.IsWindowVisible(windowHandle),
             (style & NativeMethods.WsThickFrame) != 0,
             NativeMethods.IsIconic(windowHandle),
@@ -119,10 +121,57 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
             processId == Environment.ProcessId);
     }
 
-    private static bool IsCaptionHit(IntPtr windowHandle, Point screenPoint)
+    private static bool IsCaptionHit(IntPtr windowHandle, Point screenPoint, Rectangle bounds)
     {
-        var result = NativeMethods.SendMessage(windowHandle, NativeMethods.WmNcHitTest, IntPtr.Zero, NativeMethods.PackScreenPoint(screenPoint));
-        return result.ToInt32() == NativeMethods.HtCaption;
+        var succeeded = NativeMethods.SendMessageTimeout(
+            windowHandle,
+            NativeMethods.WmNcHitTest,
+            IntPtr.Zero,
+            NativeMethods.PackScreenPoint(screenPoint),
+            NativeMethods.SmtoAbortIfHung,
+            NcHitTestTimeoutMs,
+            out var result);
+
+        return succeeded != IntPtr.Zero
+            ? result.ToInt32() == NativeMethods.HtCaption
+            : IsLikelyCaptionHit(bounds, screenPoint);
+    }
+
+    private static bool IsLikelyCaptionHit(Rectangle bounds, Point screenPoint)
+    {
+        if (bounds == Rectangle.Empty || !bounds.Contains(screenPoint))
+        {
+            return false;
+        }
+
+        var frameBorderSize = Forms.SystemInformation.FrameBorderSize;
+        var captionHeight = Math.Max(1, Forms.SystemInformation.CaptionHeight);
+        var captionButtonWidth = Math.Max(1, Forms.SystemInformation.CaptionButtonSize.Width);
+        var systemMenuWidth = Math.Max(captionButtonWidth, Forms.SystemInformation.SmallIconSize.Width + frameBorderSize.Width);
+        var captionTop = bounds.Top + frameBorderSize.Height;
+        var captionBandHeight = Math.Max(
+            captionHeight,
+            Math.Min(72, Math.Max(captionHeight, bounds.Height / 6)));
+        var captionBottom = Math.Min(bounds.Bottom, captionTop + captionBandHeight);
+        var captionLeft = bounds.Left + frameBorderSize.Width + systemMenuWidth;
+        var captionRight = bounds.Right - frameBorderSize.Width;
+
+        if (captionBottom <= captionTop || captionRight <= captionLeft)
+        {
+            return false;
+        }
+
+        var rightButtonExclusion = captionButtonWidth * 3;
+        var usableCaptionRight = captionRight - rightButtonExclusion;
+        if (usableCaptionRight <= captionLeft)
+        {
+            usableCaptionRight = captionRight;
+        }
+
+        return screenPoint.Y >= captionTop &&
+               screenPoint.Y < captionBottom &&
+               screenPoint.X >= captionLeft &&
+               screenPoint.X < usableCaptionRight;
     }
 
     private static uint GetProcessId(IntPtr windowHandle)

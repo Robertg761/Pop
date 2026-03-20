@@ -39,6 +39,18 @@ public sealed class JsonSettingsStoreTests : IDisposable
         Assert.Equal(original, restored);
     }
 
+    [Fact]
+    public async Task LoadAsync_ReturnsDefaults_WhenSettingsFileContainsInvalidJson()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        await File.WriteAllTextAsync(Path.Combine(_tempDirectory, "settings.json"), "{ invalid json");
+        var store = new JsonSettingsStore(_tempDirectory);
+
+        var settings = await store.LoadAsync();
+
+        Assert.Equal(new AppSettings(), settings);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))
