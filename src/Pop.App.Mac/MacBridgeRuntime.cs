@@ -127,9 +127,17 @@ public static class MacBridgeRuntime
             return fallbackMonitor;
         }
 
-        var nearestMonitor = monitors
+        var directionalCandidates = GetDirectionalCandidates(point, monitors, fallbackMonitor);
+        var nearestMonitor = directionalCandidates
             .OrderBy(monitor => GetDistanceSquared(point, monitor.Bounds))
             .FirstOrDefault();
+
+        if (nearestMonitor == MonitorInfo.Empty)
+        {
+            nearestMonitor = monitors
+                .OrderBy(monitor => GetDistanceSquared(point, monitor.Bounds))
+                .FirstOrDefault();
+        }
 
         return nearestMonitor != MonitorInfo.Empty ? nearestMonitor : fallbackMonitor;
     }
@@ -157,6 +165,41 @@ public static class MacBridgeRuntime
                 : 0;
 
         return (dx * dx) + (dy * dy);
+    }
+
+    private static IReadOnlyList<MonitorInfo> GetDirectionalCandidates(Point point, IReadOnlyList<MonitorInfo> monitors, MonitorInfo fallbackMonitor)
+    {
+        if (fallbackMonitor == MonitorInfo.Empty)
+        {
+            return monitors;
+        }
+
+        var horizontalDistance = point.X < fallbackMonitor.Bounds.Left
+            ? point.X - fallbackMonitor.Bounds.Left
+            : point.X >= fallbackMonitor.Bounds.Right
+                ? point.X - (fallbackMonitor.Bounds.Right - 1)
+                : 0;
+        var verticalDistance = point.Y < fallbackMonitor.Bounds.Top
+            ? point.Y - fallbackMonitor.Bounds.Top
+            : point.Y >= fallbackMonitor.Bounds.Bottom
+                ? point.Y - (fallbackMonitor.Bounds.Bottom - 1)
+                : 0;
+
+        if (horizontalDistance == 0 && verticalDistance == 0)
+        {
+            return monitors;
+        }
+
+        var preferHorizontal = Math.Abs(horizontalDistance) >= Math.Abs(verticalDistance);
+        var candidates = preferHorizontal
+            ? monitors.Where(monitor => horizontalDistance < 0
+                ? monitor.Bounds.Right <= fallbackMonitor.Bounds.Left
+                : monitor.Bounds.Left >= fallbackMonitor.Bounds.Right)
+            : monitors.Where(monitor => verticalDistance < 0
+                ? monitor.Bounds.Bottom <= fallbackMonitor.Bounds.Top
+                : monitor.Bounds.Top >= fallbackMonitor.Bounds.Bottom);
+
+        return candidates.ToArray();
     }
 }
 
