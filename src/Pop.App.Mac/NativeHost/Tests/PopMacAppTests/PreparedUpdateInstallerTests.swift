@@ -42,18 +42,23 @@ struct PreparedUpdateInstallerTests {
     }
 }
 
-private struct InstallerTestFixture {
+struct InstallerTestFixture {
     let rootURL: URL
     let updatesURL: URL
     let targetAppURL: URL
 
-    init() throws {
+    init(targetIsAppBundle: Bool = true) throws {
         rootURL = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
         updatesURL = rootURL.appendingPathComponent("Updates", isDirectory: true)
-        targetAppURL = rootURL.appendingPathComponent("Applications", isDirectory: true).appendingPathComponent("Pop.app", isDirectory: true)
+        let targetDirectoryURL = rootURL.appendingPathComponent("Applications", isDirectory: true)
+        targetAppURL = targetDirectoryURL.appendingPathComponent(targetIsAppBundle ? "Pop.app" : "Pop")
 
         try FileManager.default.createDirectory(at: targetAppURL.deletingLastPathComponent(), withIntermediateDirectories: true)
-        try Self.createAppBundle(at: targetAppURL, executableContents: "current-build")
+        if targetIsAppBundle {
+            try Self.createAppBundle(at: targetAppURL, executableContents: "current-build")
+        } else {
+            try "current-build".write(to: targetAppURL, atomically: true, encoding: .utf8)
+        }
     }
 
     func makeInstaller() -> PreparedUpdateInstaller {
@@ -71,7 +76,7 @@ private struct InstallerTestFixture {
         return archiveURL
     }
 
-    private static func createAppBundle(at appURL: URL, executableContents: String) throws {
+    static func createAppBundle(at appURL: URL, executableContents: String) throws {
         let contentsURL = appURL.appendingPathComponent("Contents", isDirectory: true)
         let macOSURL = contentsURL.appendingPathComponent("MacOS", isDirectory: true)
         let executableURL = macOSURL.appendingPathComponent("PopMacApp")
@@ -90,7 +95,7 @@ private struct InstallerTestFixture {
         try executableContents.write(to: executableURL, atomically: true, encoding: .utf8)
     }
 
-    private static func runProcess(_ executablePath: String, arguments: [String]) throws {
+    static func runProcess(_ executablePath: String, arguments: [String]) throws {
         let process = Process()
         let outputPipe = Pipe()
         process.executableURL = URL(fileURLWithPath: executablePath)
