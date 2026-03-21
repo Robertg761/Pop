@@ -19,10 +19,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             self?.refreshMenuState()
         }
         runtime.start()
-
-        if runtime.settings.enabled && runtime.permissionState != .granted {
-            onboardingWindowController.present()
-        }
     }
 
     private func configureMenu() {
@@ -51,10 +47,18 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func configureWindows() {
         settingsWindowController.onSave = { [weak self] settings in
-            self?.runtime.applySettings(settings)
-            if settings.enabled && self?.runtime.permissionState != .granted {
-                self?.runtime.refreshAccessibility(prompt: true)
-                self?.onboardingWindowController.present()
+            guard let self else {
+                return
+            }
+
+            let previouslyEnabled = self.runtime.settings.enabled
+            self.runtime.applySettings(settings)
+
+            if settings.enabled && !previouslyEnabled && self.runtime.permissionState != .granted {
+                self.runtime.refreshAccessibility(prompt: true)
+                if self.runtime.permissionState != .granted {
+                    self.onboardingWindowController.present()
+                }
             }
         }
         settingsWindowController.onOpenAccessibilitySettings = {

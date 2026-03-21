@@ -52,7 +52,7 @@ Installed builds check for updates automatically after launch and about every si
 
 The GitHub release page only needs to host `Setup.exe`. Velopack feed files stay in the repo's `update-feed` branch so installed builds can update without cluttering release assets.
 
-In-app updates only exist on Windows today. The macOS build is intentionally unsigned for now and updates through GitHub Releases.
+In-app updates only exist on Windows today. The macOS packaging script ad-hoc signs `Pop.app` by default and also accepts `POP_MAC_CODESIGN_IDENTITY` when you want to sign with a real certificate. Using a stable signing identity helps macOS remember Accessibility permission across launches and updates.
 
 ## Build From Source
 

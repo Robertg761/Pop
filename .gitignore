@@ -1,9 +1,17 @@
 artifacts/
+.dotnet/
 .dotnet8/
+.vs/
+
 **/bin/
 **/obj/
+**/TestResults/
 **/.artifacts/
 **/.DS_Store
+*.user
+*.suo
+*.userprefs
+
 src/Pop.App.Mac/NativeHost/.build/
 src/Pop.App.Mac/NativeHost/.swiftpm/
 src/Pop.App.Mac/NativeHost/*.xcodeproj/
