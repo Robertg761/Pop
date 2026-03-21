@@ -42,6 +42,11 @@ let package = Package(
             name: "PopMacSupportTests",
             dependencies: ["PopMacSupport"],
             path: "Tests/PopMacSupportTests"
+        ),
+        .testTarget(
+            name: "PopMacAppTests",
+            dependencies: ["PopMacApp"],
+            path: "Tests/PopMacAppTests"
         )
     ]
 )

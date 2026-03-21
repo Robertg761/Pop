@@ -4,21 +4,32 @@ import PopMacSupport
 @MainActor
 final class AppDelegate: NSObject, NSApplicationDelegate {
     private let runtime = PopRuntimeController()
+    private let updateService = UpdateService()
     private let statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
     private let enabledMenuItem = NSMenuItem(title: "Enable Pop", action: #selector(toggleEnabled), keyEquivalent: "")
     private let launchMenuItem = NSMenuItem(title: "Launch At Login", action: #selector(toggleLaunchAtLogin), keyEquivalent: "")
     private let permissionMenuItem = NSMenuItem(title: "Accessibility: Unknown", action: nil, keyEquivalent: "")
     private let versionMenuItem = NSMenuItem(title: "Version", action: nil, keyEquivalent: "")
+    private let updateStatusMenuItem = NSMenuItem(title: "Updates: Starting...", action: nil, keyEquivalent: "")
+    private let checkForUpdatesMenuItem = NSMenuItem(title: "Check for Updates...", action: #selector(checkForUpdates), keyEquivalent: "")
+    private let installUpdateMenuItem = NSMenuItem(title: "Install Update", action: #selector(installUpdate), keyEquivalent: "")
     private lazy var settingsWindowController = SettingsWindowController()
     private lazy var onboardingWindowController = OnboardingWindowController()
+    private var lastPromptedReadyVersion: String?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         configureMenu()
         configureWindows()
+        configureUpdates()
         runtime.onStateChanged = { [weak self] in
             self?.refreshMenuState()
         }
         runtime.start()
+        updateService.start()
+    }
+
+    func applicationWillTerminate(_ notification: Notification) {
+        updateService.stop()
     }
 
     private func configureMenu() {
@@ -28,6 +39,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         launchMenuItem.target = self
         permissionMenuItem.isEnabled = false
         versionMenuItem.isEnabled = false
+        updateStatusMenuItem.isEnabled = false
+        checkForUpdatesMenuItem.target = self
+        installUpdateMenuItem.target = self
+        installUpdateMenuItem.isHidden = true
         let settingsItem = NSMenuItem(title: "Open Settings", action: #selector(openSettings), keyEquivalent: "")
         settingsItem.target = self
         let quitItem = NSMenuItem(title: "Quit", action: #selector(quit), keyEquivalent: "q")
@@ -38,6 +53,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(.separator())
         menu.addItem(permissionMenuItem)
         menu.addItem(versionMenuItem)
+        menu.addItem(updateStatusMenuItem)
+        menu.addItem(checkForUpdatesMenuItem)
+        menu.addItem(installUpdateMenuItem)
         menu.addItem(.separator())
         menu.addItem(settingsItem)
         menu.addItem(.separator())
@@ -64,9 +82,25 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         settingsWindowController.onOpenAccessibilitySettings = {
             Self.openAccessibilitySettings()
         }
+        settingsWindowController.onCheckForUpdates = {
+            self.checkForUpdates()
+        }
+        settingsWindowController.onInstallUpdate = {
+            self.installUpdate()
+        }
         onboardingWindowController.onOpenAccessibilitySettings = {
             Self.openAccessibilitySettings()
         }
+    }
+
+    private func configureUpdates() {
+        updateService.onStateChanged = { [weak self] state in
+            self?.applyUpdateState(state)
+        }
+        updateService.onReadyToInstall = { [weak self] version in
+            self?.promptForReadyUpdate(version: version)
+        }
+        applyUpdateState(updateService.currentState)
     }
 
     private func refreshMenuState() {
@@ -89,7 +123,24 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openSettings() {
-        settingsWindowController.present(settings: runtime.settings, permissionState: runtime.permissionState)
+        settingsWindowController.present(
+            settings: runtime.settings,
+            permissionState: runtime.permissionState,
+            updateState: updateService.currentState)
+    }
+
+    @objc private func checkForUpdates() {
+        updateService.checkNow()
+    }
+
+    @objc private func installUpdate() {
+        do {
+            if try updateService.applyPendingUpdateAndRestart() {
+                NSApplication.shared.terminate(nil)
+            }
+        } catch {
+            showUpdateError(message: error.localizedDescription)
+        }
     }
 
     @objc private func quit() {
@@ -103,5 +154,40 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private static func openAccessibilitySettings() {
         let url = URL(string: "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility")!
         NSWorkspace.shared.open(url)
+    }
+
+    private func applyUpdateState(_ state: UpdateState) {
+        updateStatusMenuItem.title = "Updates: \(state.message)"
+        checkForUpdatesMenuItem.isEnabled = state.canCheck
+        installUpdateMenuItem.isHidden = !state.canInstall
+        installUpdateMenuItem.isEnabled = state.canInstall
+        installUpdateMenuItem.title = state.availableVersion.map { "Install v\($0)" } ?? "Install Update"
+        settingsWindowController.applyUpdateState(state)
+    }
+
+    private func promptForReadyUpdate(version: String?) {
+        guard lastPromptedReadyVersion != version else {
+            return
+        }
+
+        lastPromptedReadyVersion = version
+
+        let alert = NSAlert()
+        alert.messageText = version.map { "Pop v\($0) is ready to install." } ?? "A Pop update is ready to install."
+        alert.informativeText = "Restart Pop to finish installing the downloaded update."
+        alert.addButton(withTitle: "Install Update")
+        alert.addButton(withTitle: "Later")
+        NSApp.activate(ignoringOtherApps: true)
+
+        if alert.runModal() == .alertFirstButtonReturn {
+            installUpdate()
+        }
+    }
+
+    private func showUpdateError(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Update Failed"
+        alert.informativeText = message
+        alert.runModal()
     }
 }
