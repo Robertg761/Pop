@@ -48,12 +48,13 @@ final class UpdateService: NSObject {
 
     init(
         releaseClient: GitHubReleaseClient = GitHubReleaseClient(),
+        installer: PreparedUpdateInstaller = PreparedUpdateInstaller(),
         currentVersionProvider: @escaping () -> String = {
             (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.0.0"
         }
     ) {
         self.releaseClient = releaseClient
-        self.installer = PreparedUpdateInstaller()
+        self.installer = installer
         self.currentVersionProvider = currentVersionProvider
         self.currentState = UpdateService.createUnsupportedState(currentVersion: currentVersionProvider(), message: self.installer.unsupportedReason)
         super.init()
