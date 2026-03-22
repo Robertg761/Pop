@@ -120,7 +120,7 @@ final class SettingsWindowController: NSWindowController {
     func applyUpdateState(_ state: UpdateState) {
         currentVersionLabel.stringValue = "Version \(state.currentVersion)"
         updateStatusLabel.stringValue = state.message
-        checkForUpdatesButton.isEnabled = state.canCheck
+        checkForUpdatesButton.isEnabled = state.canCheck || state.status == .unsupported
 
         if state.status == .downloading, let progress = state.downloadProgressPercent {
             updateProgressIndicator.isHidden = false

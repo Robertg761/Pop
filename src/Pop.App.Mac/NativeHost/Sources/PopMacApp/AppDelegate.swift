@@ -130,6 +130,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func checkForUpdates() {
+        if updateService.currentState.status == .unsupported {
+            showUpdateUnavailable(message: updateService.currentState.message)
+            return
+        }
+
         updateService.checkNow()
     }
 
@@ -158,7 +163,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     private func applyUpdateState(_ state: UpdateState) {
         updateStatusMenuItem.title = "Updates: \(state.message)"
-        checkForUpdatesMenuItem.isEnabled = state.canCheck
+        checkForUpdatesMenuItem.isEnabled = state.canCheck || state.status == .unsupported
         installUpdateMenuItem.isHidden = !state.canInstall
         installUpdateMenuItem.isEnabled = state.canInstall
         installUpdateMenuItem.title = state.availableVersion.map { "Install v\($0)" } ?? "Install Update"
@@ -187,6 +192,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private func showUpdateError(message: String) {
         let alert = NSAlert()
         alert.messageText = "Update Failed"
+        alert.informativeText = message
+        alert.runModal()
+    }
+
+    private func showUpdateUnavailable(message: String) {
+        let alert = NSAlert()
+        alert.messageText = "Updates Unavailable"
         alert.informativeText = message
         alert.runModal()
     }
