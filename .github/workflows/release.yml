@@ -252,25 +252,49 @@ jobs:
             Pop-Location
           }
 
-          $channelDir = Join-Path $feedRoot $feedPath
-          if (Test-Path $channelDir) {
-            Remove-Item $channelDir -Recurse -Force
-          }
-
-          New-Item -ItemType Directory -Path $channelDir -Force | Out-Null
-          foreach ($file in $feedFiles) {
-            Copy-Item $file.FullName (Join-Path $channelDir $file.Name) -Force
-          }
-
           Push-Location $feedRoot
           git config user.name 'github-actions[bot]'
           git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
-          git add --all $feedPath
-          git diff --cached --quiet
-          if ($LASTEXITCODE -ne 0) {
+
+          $published = $false
+          for ($attempt = 1; $attempt -le 3 -and -not $published; $attempt++) {
+            git fetch origin $feedBranch *> $null
+            if ($LASTEXITCODE -eq 0) {
+              git checkout -B $feedBranch "origin/$feedBranch" | Out-Null
+            }
+
+            $channelDir = Join-Path $feedRoot $feedPath
+            if (Test-Path $channelDir) {
+              Remove-Item $channelDir -Recurse -Force
+            }
+
+            New-Item -ItemType Directory -Path $channelDir -Force | Out-Null
+            foreach ($file in $feedFiles) {
+              Copy-Item $file.FullName (Join-Path $channelDir $file.Name) -Force
+            }
+
+            git add --all $feedPath
+            git diff --cached --quiet
+            if ($LASTEXITCODE -eq 0) {
+              $published = $true
+              break
+            }
+
             git commit -m "Publish update feed for ${{ steps.meta.outputs.version }}" | Out-Null
-            git push origin $feedBranch | Out-Null
+            git push origin HEAD:$feedBranch | Out-Null
+            if ($LASTEXITCODE -eq 0) {
+              $published = $true
+              break
+            }
+
+            git reset --hard "origin/$feedBranch" | Out-Null
+            Start-Sleep -Seconds $attempt
           }
+
+          if (-not $published) {
+            throw "Unable to publish the update feed after multiple attempts."
+          }
+
           Pop-Location
 
       - name: Upload Setup.exe to GitHub release
