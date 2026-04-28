@@ -105,13 +105,20 @@ if ($UploadToGitHub) {
         }
 
         & gh @createArgs
+        if ($LASTEXITCODE -ne 0) {
+            & gh release upload $releaseTag $setupAsset.FullName --repo $repoSlug --clobber
+        }
     }
     else {
         & gh release upload $releaseTag $setupAsset.FullName --repo $repoSlug --clobber
     }
 
     $releaseData = gh release view $releaseTag --repo $repoSlug --json assets | ConvertFrom-Json
-    $assetsToDelete = @($releaseData.assets | Where-Object { $_.name -ne $setupAsset.Name })
+    $assetsToDelete = @($releaseData.assets | Where-Object {
+        $_.name -ne $setupAsset.Name -and
+        $_.name -notlike 'Pop-macos-arm64-*.zip' -and
+        $_.name -notlike 'Pop-macos-arm64-*.dmg'
+    })
     foreach ($asset in $assetsToDelete) {
         & gh release delete-asset $releaseTag $asset.name --repo $repoSlug --yes
     }

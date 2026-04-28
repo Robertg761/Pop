@@ -133,7 +133,6 @@ public sealed class PopHost : IDisposable
 
         if (_settingsWindow is not null)
         {
-            _settingsWindow.SettingsSaved -= OnSettingsSaved;
             _settingsWindow.ClosePermanently();
             _settingsWindow = null;
         }
@@ -190,7 +189,7 @@ public sealed class PopHost : IDisposable
                     ["projectedLandingPoint"] = decision.ProjectedLandingPoint.ToString(),
                     ["releaseMonitor"] = e.Session.CurrentMonitorInfo.WorkArea.ToString(),
                     ["targetMonitor"] = decision.TargetMonitorInfo.WorkArea.ToString()
-            });
+                });
             return;
         }
 
@@ -275,14 +274,7 @@ public sealed class PopHost : IDisposable
 
     private SettingsWindow CreateSettingsWindow()
     {
-        var window = new SettingsWindow(_settings, _updateService);
-        window.SettingsSaved += OnSettingsSaved;
-        return window;
-    }
-
-    private async void OnSettingsSaved(object? sender, AppSettings settings)
-    {
-        await ApplySettingsAsync(settings);
+        return new SettingsWindow(_settings, _updateService, ApplySettingsAsync);
     }
 
     private async Task ToggleEnabledAsync()
@@ -300,12 +292,60 @@ public sealed class PopHost : IDisposable
         await _updateService.CheckNowAsync(_disposeCancellation.Token);
     }
 
-    private async Task ApplySettingsAsync(AppSettings settings)
+    private async Task<bool> ApplySettingsAsync(AppSettings settings)
     {
-        _settings = settings;
-        _startupRegistration.SetLaunchAtStartup(settings.LaunchAtStartup);
-        UpdateMenuState();
-        await _settingsStore.SaveAsync(settings, _disposeCancellation.Token);
+        var previousSettings = _settings;
+        var launchAtStartupChanged = settings.LaunchAtStartup != previousSettings.LaunchAtStartup;
+
+        try
+        {
+            if (launchAtStartupChanged)
+            {
+                _startupRegistration.SetLaunchAtStartup(settings.LaunchAtStartup);
+            }
+
+            await _settingsStore.SaveAsync(settings, _disposeCancellation.Token);
+
+            _settings = settings;
+            UpdateMenuState();
+            return true;
+        }
+        catch (OperationCanceledException) when (_disposeCancellation.IsCancellationRequested)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            if (launchAtStartupChanged)
+            {
+                TryRestoreLaunchAtStartup(previousSettings.LaunchAtStartup);
+            }
+
+            _settings = previousSettings;
+            UpdateMenuState();
+            ShowSettingsSaveError(exception);
+            return false;
+        }
+    }
+
+    private void TryRestoreLaunchAtStartup(bool enabled)
+    {
+        try
+        {
+            _startupRegistration.SetLaunchAtStartup(enabled);
+        }
+        catch
+        {
+        }
+    }
+
+    private static void ShowSettingsSaveError(Exception exception)
+    {
+        System.Windows.MessageBox.Show(
+            $"Pop couldn't save settings.\n\n{exception.Message}",
+            "Pop Settings Error",
+            System.Windows.MessageBoxButton.OK,
+            System.Windows.MessageBoxImage.Warning);
     }
 
     private void OnDragRejected(object? sender, DragSessionRejectedEventArgs e)

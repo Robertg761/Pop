@@ -117,6 +117,10 @@ final class AccessibilityWindowSystem {
             return nil
         }
 
+        guard CFGetTypeID(value) == AXUIElementGetTypeID() else {
+            return nil
+        }
+
         return (value as! AXUIElement)
     }
 
@@ -137,6 +141,10 @@ final class AccessibilityWindowSystem {
             return nil
         }
 
+        guard CFGetTypeID(value) == CFBooleanGetTypeID() else {
+            return nil
+        }
+
         return CFBooleanGetValue((value as! CFBoolean))
     }
 
@@ -144,6 +152,10 @@ final class AccessibilityWindowSystem {
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard error == .success, let value else {
+            return nil
+        }
+
+        guard CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
 
@@ -156,6 +168,10 @@ final class AccessibilityWindowSystem {
         var value: CFTypeRef?
         let error = AXUIElementCopyAttributeValue(element, attribute as CFString, &value)
         guard error == .success, let value else {
+            return nil
+        }
+
+        guard CFGetTypeID(value) == AXValueGetTypeID() else {
             return nil
         }
 

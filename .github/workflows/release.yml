@@ -324,6 +324,9 @@ jobs:
             }
 
             & gh @createArgs
+            if ($LASTEXITCODE -ne 0) {
+              & gh release upload $releaseTag $setupAsset.FullName --repo "${{ github.repository }}" --clobber
+            }
           }
           else {
             & gh release upload $releaseTag $setupAsset.FullName --repo "${{ github.repository }}" --clobber

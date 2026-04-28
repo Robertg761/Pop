@@ -10,20 +10,23 @@ public partial class SettingsWindow : Window
 {
     private readonly SettingsViewModel _viewModel;
     private readonly IUpdateService _updateService;
+    private readonly Func<AppSettings, Task<bool>> _saveSettingsAsync;
     private bool _allowClose;
 
-    internal SettingsWindow(AppSettings settings, IUpdateService updateService)
+    internal SettingsWindow(
+        AppSettings settings,
+        IUpdateService updateService,
+        Func<AppSettings, Task<bool>> saveSettingsAsync)
     {
         InitializeComponent();
         Icon = AppIconProvider.CreateWindowIcon();
         _viewModel = SettingsViewModel.FromSettings(settings);
         _updateService = updateService;
+        _saveSettingsAsync = saveSettingsAsync;
         DataContext = _viewModel;
         _updateService.StateChanged += OnUpdateStateChanged;
         ApplyUpdateState(_updateService.CurrentState);
     }
-
-    public event EventHandler<AppSettings>? SettingsSaved;
 
     public void ShowOrBringToFront(AppSettings settings)
     {
@@ -60,7 +63,7 @@ public partial class SettingsWindow : Window
         base.OnClosing(e);
     }
 
-    private void SaveButton_OnClick(object sender, RoutedEventArgs e)
+    private async void SaveButton_OnClick(object sender, RoutedEventArgs e)
     {
         if (!_viewModel.TryBuildSettings(out var settings, out var validationMessage))
         {
@@ -68,8 +71,26 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        SettingsSaved?.Invoke(this, settings);
-        Hide();
+        var saveElement = sender as UIElement;
+        if (saveElement is not null)
+        {
+            saveElement.IsEnabled = false;
+        }
+
+        try
+        {
+            if (await _saveSettingsAsync(settings))
+            {
+                Hide();
+            }
+        }
+        finally
+        {
+            if (saveElement is not null)
+            {
+                saveElement.IsEnabled = true;
+            }
+        }
     }
 
     private void CancelButton_OnClick(object sender, RoutedEventArgs e)
