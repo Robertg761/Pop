@@ -1,0 +1,82 @@
+name: Release Linux
+
+on:
+  workflow_run:
+    workflows:
+      - Release
+    types:
+      - completed
+
+permissions:
+  contents: write
+
+jobs:
+  release-linux:
+    if: ${{ github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main' }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.workflow_run.head_sha }}
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Read release version
+        id: meta
+        shell: bash
+        run: |
+          version="$(dotnet msbuild -nologo -getProperty:Version ./src/Pop.App.Linux/Pop.App.Linux.csproj | tail -n 1)"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      - name: Test shared .NET suite
+        run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
+
+      - name: Make Linux package script executable
+        run: chmod +x ./scripts/package-linux-release.sh
+
+      - name: Package Linux app
+        id: package
+        shell: bash
+        run: |
+          package_output="$(./scripts/package-linux-release.sh)"
+          echo "$package_output"
+
+          tar_path="$(printf '%s\n' "$package_output" | grep '^tar_path=' | tail -n 1 | cut -d= -f2-)"
+          if [[ -z "$tar_path" ]]; then
+            echo "Unable to read Linux package output path." >&2
+            exit 1
+          fi
+
+          echo "tar_path=$tar_path" >> "$GITHUB_OUTPUT"
+
+      - name: Upload Linux asset to GitHub release
+        shell: bash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          release_tag="v${{ steps.meta.outputs.version }}"
+          tar_asset="${{ steps.package.outputs.tar_path }}"
+
+          if [[ ! -f "$tar_asset" ]]; then
+            echo "Unable to find the generated Linux tarball asset." >&2
+            exit 1
+          fi
+
+          if gh release view "$release_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
+            gh release upload "$release_tag" "$tar_asset" --repo "${{ github.repository }}" --clobber
+          else
+            echo "Release $release_tag does not exist after the main Release workflow completed." >&2
+            exit 1
+          fi
+
+      - name: Upload Linux release artifact
+        if: ${{ always() }}
+        uses: actions/upload-artifact@v6
+        with:
+          name: pop-release-linux
+          path: artifacts/linux/release/*
