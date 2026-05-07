@@ -41,12 +41,13 @@ Pop currently targets a focused v1 workflow:
 
 ## Download & Install
 
-Pop is now set up for release artifacts on both platforms:
+Pop is now set up for release artifacts on Windows, macOS, and Linux:
 
 1. Download the latest `Setup.exe` from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page.
 2. On macOS, download the latest `Pop-macos-arm64-<version>.zip`, unzip it, and move `Pop.app` into `Applications`.
-3. Launch Pop and grant Accessibility permission when prompted.
-4. Open `Settings` from the tray/menu-bar icon to tune behavior.
+3. On Linux, download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it with `./Pop-linux-x64-<version>.AppImage`. The Linux release also includes a `.tar.gz` package.
+4. Launch Pop and grant Accessibility permission when prompted.
+5. Open `Settings` from the tray/menu-bar icon to tune behavior.
 
 Installed builds check for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready.
 
@@ -161,5 +162,5 @@ On macOS, launch-at-login is implemented with a per-user LaunchAgent plist under
 - The app is tray-first by design, so there is no main window on launch.
 - Tests currently pass with `dotnet test tests/Pop.Tests/Pop.Tests.csproj`, `./scripts/build-mac-bridge.sh`, and `swift test --package-path src/Pop.App.Mac/NativeHost`.
 - Shared release metadata lives in `Directory.Build.props`.
-- A push to `main` that bumps `Version` in `Directory.Build.props` triggers the Windows and macOS release workflow in `.github/workflows/release.yml`.
-- For local release artifacts, run `.\scripts\package-release.ps1` on Windows or `./scripts/package-mac-release.sh` on macOS.
+- A push to `main` that bumps `Version` in `Directory.Build.props` triggers the Windows and macOS release workflow in `.github/workflows/release.yml`; a successful main release then triggers `.github/workflows/release-linux.yml` to attach Linux AppImage and tarball assets.
+- For local release artifacts, run `.\scripts\package-release.ps1` on Windows, `./scripts/package-mac-release.sh` on macOS, or `./scripts/package-linux-release.sh` on Linux.

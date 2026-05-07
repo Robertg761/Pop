@@ -51,7 +51,14 @@ jobs:
             exit 1
           fi
 
+          appimage_path="$(printf '%s\n' "$package_output" | grep '^appimage_path=' | tail -n 1 | cut -d= -f2-)"
+          if [[ -z "$appimage_path" ]]; then
+            echo "Unable to read Linux AppImage output path." >&2
+            exit 1
+          fi
+
           echo "tar_path=$tar_path" >> "$GITHUB_OUTPUT"
+          echo "appimage_path=$appimage_path" >> "$GITHUB_OUTPUT"
 
       - name: Upload Linux asset to GitHub release
         shell: bash
@@ -61,14 +68,20 @@ jobs:
         run: |
           release_tag="v${{ steps.meta.outputs.version }}"
           tar_asset="${{ steps.package.outputs.tar_path }}"
+          appimage_asset="${{ steps.package.outputs.appimage_path }}"
 
           if [[ ! -f "$tar_asset" ]]; then
             echo "Unable to find the generated Linux tarball asset." >&2
             exit 1
           fi
 
+          if [[ ! -f "$appimage_asset" ]]; then
+            echo "Unable to find the generated Linux AppImage asset." >&2
+            exit 1
+          fi
+
           if gh release view "$release_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$release_tag" "$tar_asset" --repo "${{ github.repository }}" --clobber
+            gh release upload "$release_tag" "$appimage_asset" "$tar_asset" --repo "${{ github.repository }}" --clobber
           else
             echo "Release $release_tag does not exist after the main Release workflow completed." >&2
             exit 1
