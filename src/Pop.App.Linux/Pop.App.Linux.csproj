@@ -13,6 +13,7 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="Platform\KWin\pop-wayland.js" LogicalName="Pop.App.Linux.Platform.KWin.pop-wayland.js" />
     <ProjectReference Include="..\Pop.Core\Pop.Core.csproj" />
     <ProjectReference Include="..\Pop.Platform.Abstractions\Pop.Platform.Abstractions.csproj" />
   </ItemGroup>

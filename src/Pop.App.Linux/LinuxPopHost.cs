@@ -1,4 +1,5 @@
 using System.Drawing;
+using Pop.App.Linux.Platform.KWin;
 using Pop.App.Linux.Platform.X11;
 using Pop.App.Linux.Services;
 using Pop.Core.Events;
@@ -13,12 +14,13 @@ namespace Pop.App.Linux;
 public sealed class LinuxPopHost : IDisposable
 {
     private readonly ISettingsStore _settingsStore;
-    private readonly X11DisplayConnection _displayConnection;
-    private readonly IDragTracker _dragTracker;
-    private readonly IWindowInspector _windowInspector;
-    private readonly ISnapDecider _snapDecider;
-    private readonly IWindowSnapBoundsCalculator _snapBoundsCalculator;
-    private readonly IWindowMover _windowMover;
+    private readonly KWinWaylandIntegration? _kwinWaylandIntegration;
+    private readonly X11DisplayConnection? _displayConnection;
+    private readonly IDragTracker? _dragTracker;
+    private readonly IWindowInspector? _windowInspector;
+    private readonly ISnapDecider? _snapDecider;
+    private readonly IWindowSnapBoundsCalculator? _snapBoundsCalculator;
+    private readonly IWindowMover? _windowMover;
     private readonly WindowAnimator _windowAnimator = new();
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
@@ -28,6 +30,13 @@ public sealed class LinuxPopHost : IDisposable
     public LinuxPopHost()
     {
         _settingsStore = new JsonSettingsStore(LinuxPaths.ConfigDirectory);
+
+        if (KWinWaylandIntegration.IsCandidateSession())
+        {
+            _kwinWaylandIntegration = new KWinWaylandIntegration();
+            return;
+        }
+
         _displayConnection = X11DisplayConnection.Open();
         _windowInspector = new X11WindowInspector(_displayConnection, new WindowEligibilityEvaluator());
         _snapDecider = new SnapDecider(_windowInspector.InspectMonitorAt);
@@ -49,19 +58,32 @@ public sealed class LinuxPopHost : IDisposable
         }
 
         _settings = await _settingsStore.LoadAsync(_disposeCancellation.Token);
-        _dragTracker.Start();
+
+        if (_kwinWaylandIntegration is not null)
+        {
+            await _kwinWaylandIntegration.InitializeAsync(_disposeCancellation.Token);
+            Console.WriteLine("Pop installed its KWin Wayland integration for Plasma.");
+            return;
+        }
+
+        _dragTracker!.Start();
     }
 
     public void Dispose()
     {
         _disposeCancellation.Cancel();
-        _dragTracker.DragRejected -= OnDragRejected;
-        _dragTracker.DragStarted -= OnDragStarted;
-        _dragTracker.DragUpdated -= OnDragUpdated;
-        _dragTracker.DragCompleted -= OnDragCompleted;
-        _dragTracker.Dispose();
+        if (_dragTracker is not null)
+        {
+            _dragTracker.DragRejected -= OnDragRejected;
+            _dragTracker.DragStarted -= OnDragStarted;
+            _dragTracker.DragUpdated -= OnDragUpdated;
+            _dragTracker.DragCompleted -= OnDragCompleted;
+            _dragTracker.Dispose();
+        }
+
+        _kwinWaylandIntegration?.Dispose();
         _diagnosticsLogService.Dispose();
-        _displayConnection.Dispose();
+        _displayConnection?.Dispose();
         _disposeCancellation.Dispose();
     }
 
@@ -82,7 +104,7 @@ public sealed class LinuxPopHost : IDisposable
             return;
         }
 
-        var decision = _snapDecider.Decide(e.Session, _settings);
+        var decision = _snapDecider!.Decide(e.Session, _settings);
         e.Session.CurrentPredictedTarget = decision.Target;
     }
 
@@ -93,7 +115,7 @@ public sealed class LinuxPopHost : IDisposable
             return;
         }
 
-        var decision = _snapDecider.Decide(e.Session, _settings);
+        var decision = _snapDecider!.Decide(e.Session, _settings);
         if (!decision.IsQualified)
         {
             LogDiagnostics("drag-release", "Release did not qualify for snapping.", new Dictionary<string, string?>
@@ -118,7 +140,7 @@ public sealed class LinuxPopHost : IDisposable
             return;
         }
 
-        var tileBounds = _snapBoundsCalculator.GetSnapBounds(e.Session.WindowHandle, visibleTileBounds);
+        var tileBounds = _snapBoundsCalculator!.GetSnapBounds(e.Session.WindowHandle, visibleTileBounds);
         var plan = _windowAnimator.CreatePlan(
             e.Session.CurrentBounds,
             tileBounds,
@@ -134,7 +156,7 @@ public sealed class LinuxPopHost : IDisposable
 
         try
         {
-            await _windowMover.MoveWindowAsync(e.Session.WindowHandle, plan, _disposeCancellation.Token);
+            await _windowMover!.MoveWindowAsync(e.Session.WindowHandle, plan, _disposeCancellation.Token);
         }
         catch (OperationCanceledException)
         {
@@ -143,7 +165,7 @@ public sealed class LinuxPopHost : IDisposable
 
     private void RefreshSessionState(DragSession session)
     {
-        var state = _windowInspector.InspectWindowState(session.WindowHandle);
+        var state = _windowInspector!.InspectWindowState(session.WindowHandle);
         if (state.Bounds != Rectangle.Empty)
         {
             session.UpdateCurrentBounds(state.Bounds);

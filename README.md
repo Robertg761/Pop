@@ -45,7 +45,7 @@ Pop is now set up for release artifacts on Windows, macOS, and Linux:
 
 1. Download the latest `Setup.exe` from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page.
 2. On macOS, download the latest `Pop-macos-arm64-<version>.zip`, unzip it, and move `Pop.app` into `Applications`.
-3. On Linux, download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it with `./Pop-linux-x64-<version>.AppImage`. The Linux release also includes a `.tar.gz` package.
+3. On Linux, download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it from a terminal with `./Pop-linux-x64-<version>.AppImage`. The current Linux build supports X11 sessions and Plasma Wayland through a KWin script. If it is launched without a terminal, startup output is written to `~/.config/Pop/launch.log`. The Linux release also includes a `.tar.gz` package.
 4. Launch Pop and grant Accessibility permission when prompted.
 5. Open `Settings` from the tray/menu-bar icon to tune behavior.
 
@@ -130,6 +130,12 @@ On macOS the diagnostics log lives in:
 
 ```text
 ~/Library/Application Support/Pop/diagnostics.log
+```
+
+On Linux, diagnostics and AppImage launch output live under:
+
+```text
+~/.config/Pop/
 ```
 
 These entries can help explain:

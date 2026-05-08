@@ -30,14 +30,16 @@ rm -f "$RELEASE_DIR"/Pop-linux-x64-*.tar.gz "$RELEASE_DIR"/Pop-linux-x64-*.AppIm
 
 cp -a "$PUBLISH_DIR"/. "$STAGE_DIR"/
 cat > "$STAGE_DIR/README-linux.txt" <<'EOF'
-Pop for Linux currently supports X11 desktop sessions.
+Pop for Linux currently supports X11 desktop sessions and Plasma Wayland
+through a KWin script.
 
 Run:
   ./Pop
 
-The app watches title-bar drag gestures and exits on Ctrl+C. Settings and
-diagnostics are stored under $XDG_CONFIG_HOME/Pop, or ~/.config/Pop when
-XDG_CONFIG_HOME is unset.
+The app watches title-bar drag gestures and exits on Ctrl+C. The current Linux
+build is terminal-first and does not have a tray icon or settings window yet.
+Settings, diagnostics, and AppImage launch logs are stored under
+$XDG_CONFIG_HOME/Pop, or ~/.config/Pop when XDG_CONFIG_HOME is unset.
 EOF
 
 tar -C "$(dirname "$STAGE_DIR")" -czf "$TAR_PATH" "$(basename "$STAGE_DIR")"
@@ -51,7 +53,33 @@ cat > "$APPDIR/AppRun" <<'EOF'
 set -euo pipefail
 
 APPDIR="$(cd "$(dirname "$0")" && pwd)"
-exec "$APPDIR/usr/bin/Pop" "$@"
+POP_BIN="$APPDIR/usr/bin/Pop"
+
+notify() {
+  if command -v notify-send >/dev/null 2>&1; then
+    notify-send "Pop" "$1" || true
+  fi
+}
+
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+log_dir="$config_home/Pop"
+log_path="$log_dir/launch.log"
+
+if [[ -t 1 || -t 2 ]]; then
+  exec "$POP_BIN" "$@"
+fi
+
+mkdir -p "$log_dir"
+echo "[$(date --iso-8601=seconds)] Starting Pop from AppImage." >> "$log_path"
+notify "Pop is running. Launch output is logged to $log_path."
+
+if "$POP_BIN" "$@" >> "$log_path" 2>&1; then
+  exit 0
+fi
+
+exit_code=$?
+notify "Pop could not start. See $log_path for details."
+exit "$exit_code"
 EOF
 chmod +x "$APPDIR/AppRun"
 
@@ -62,7 +90,7 @@ Name=Pop
 Comment=Momentum-based window snapping
 Exec=Pop
 Icon=pop
-Terminal=false
+Terminal=true
 Categories=Utility;
 EOF
 cp "$APPDIR/pop.desktop" "$APPDIR/usr/share/applications/pop.desktop"
