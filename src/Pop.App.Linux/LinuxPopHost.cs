@@ -27,6 +27,8 @@ public sealed class LinuxPopHost : IDisposable
 
     private AppSettings _settings = new();
 
+    public AppSettings Settings => _settings;
+
     public LinuxPopHost()
     {
         _settingsStore = new JsonSettingsStore(LinuxPaths.ConfigDirectory);
@@ -61,12 +63,23 @@ public sealed class LinuxPopHost : IDisposable
 
         if (_kwinWaylandIntegration is not null)
         {
-            await _kwinWaylandIntegration.InitializeAsync(_disposeCancellation.Token);
+            await _kwinWaylandIntegration.InitializeAsync(_settings, _disposeCancellation.Token);
             Console.WriteLine("Pop installed its KWin Wayland integration for Plasma.");
             return;
         }
 
         _dragTracker!.Start();
+    }
+
+    public async Task SaveSettingsAsync(AppSettings settings)
+    {
+        _settings = settings;
+        await _settingsStore.SaveAsync(settings, _disposeCancellation.Token);
+
+        if (_kwinWaylandIntegration is not null)
+        {
+            await _kwinWaylandIntegration.ReloadAsync(settings, _disposeCancellation.Token);
+        }
     }
 
     public void Dispose()

@@ -1,6 +1,8 @@
 using System.Diagnostics;
+using System.Globalization;
 using System.Reflection;
 using Pop.App.Linux.Services;
+using Pop.Core.Models;
 
 namespace Pop.App.Linux.Platform.KWin;
 
@@ -14,14 +16,25 @@ public sealed class KWinWaylandIntegration : IDisposable
     {
         var sessionType = Environment.GetEnvironmentVariable("XDG_SESSION_TYPE");
         var waylandDisplay = Environment.GetEnvironmentVariable("WAYLAND_DISPLAY");
+        var currentDesktop = Environment.GetEnvironmentVariable("XDG_CURRENT_DESKTOP") ?? string.Empty;
+        var desktopSession = Environment.GetEnvironmentVariable("DESKTOP_SESSION") ?? string.Empty;
+        var isKdeSession =
+            currentDesktop.Contains("KDE", StringComparison.OrdinalIgnoreCase) ||
+            desktopSession.Contains("plasma", StringComparison.OrdinalIgnoreCase);
 
-        return string.Equals(sessionType, "wayland", StringComparison.OrdinalIgnoreCase) ||
-               !string.IsNullOrWhiteSpace(waylandDisplay);
+        return isKdeSession &&
+               (string.Equals(sessionType, "wayland", StringComparison.OrdinalIgnoreCase) ||
+                !string.IsNullOrWhiteSpace(waylandDisplay));
     }
 
-    public async Task InitializeAsync(CancellationToken cancellationToken)
+    public async Task InitializeAsync(AppSettings settings, CancellationToken cancellationToken)
     {
-        await WriteScriptAsync(cancellationToken);
+        await ReloadAsync(settings, cancellationToken);
+    }
+
+    public async Task ReloadAsync(AppSettings settings, CancellationToken cancellationToken)
+    {
+        await WriteScriptAsync(settings, cancellationToken);
 
         await RunGdbusAsync(cancellationToken, allowFailure: true, "call", "--session",
             "--dest", "org.kde.KWin",
@@ -57,14 +70,21 @@ public sealed class KWinWaylandIntegration : IDisposable
         }
     }
 
-    private async Task WriteScriptAsync(CancellationToken cancellationToken)
+    private async Task WriteScriptAsync(AppSettings settings, CancellationToken cancellationToken)
     {
         Directory.CreateDirectory(Path.GetDirectoryName(_scriptPath)!);
 
         await using var resource = Assembly.GetExecutingAssembly().GetManifestResourceStream(ScriptResourceName)
             ?? throw new InvalidOperationException($"Unable to load embedded KWin script '{ScriptResourceName}'.");
-        await using var output = File.Create(_scriptPath);
-        await resource.CopyToAsync(output, cancellationToken);
+        using var reader = new StreamReader(resource);
+        var script = await reader.ReadToEndAsync(cancellationToken);
+        script = script
+            .Replace("__POP_ENABLED__", settings.Enabled ? "true" : "false", StringComparison.Ordinal)
+            .Replace("__POP_GLIDE_DURATION_MS__", settings.GlideDurationMs.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__POP_MIN_HORIZONTAL_VELOCITY__", settings.ThrowVelocityThresholdPxPerSec.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal)
+            .Replace("__POP_HORIZONTAL_DOMINANCE_RATIO__", settings.HorizontalDominanceRatio.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+
+        await File.WriteAllTextAsync(_scriptPath, script, cancellationToken);
     }
 
     private static async Task RunGdbusAsync(

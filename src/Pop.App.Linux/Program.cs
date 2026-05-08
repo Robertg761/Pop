@@ -1,29 +1,19 @@
-using Pop.App.Linux;
+using Avalonia;
 
-var shutdown = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-LinuxPopHost? host = null;
+namespace Pop.App.Linux;
 
-Console.CancelKeyPress += (_, e) =>
+internal static class Program
 {
-    e.Cancel = true;
-    shutdown.TrySetResult();
-};
+    [STAThread]
+    public static int Main(string[] args)
+    {
+        return BuildAvaloniaApp().StartWithClassicDesktopLifetime(args);
+    }
 
-AppDomain.CurrentDomain.ProcessExit += (_, _) => host?.Dispose();
-
-try
-{
-    host = new LinuxPopHost();
-    await host.InitializeAsync();
-    Console.WriteLine("Pop for Linux is running. Press Ctrl+C to exit.");
-    await shutdown.Task;
-}
-catch (Exception exception)
-{
-    Console.Error.WriteLine($"Pop couldn't start: {exception.Message}");
-    Environment.ExitCode = 1;
-}
-finally
-{
-    host?.Dispose();
+    private static AppBuilder BuildAvaloniaApp()
+    {
+        return AppBuilder.Configure<PopLinuxApp>()
+            .UsePlatformDetect()
+            .LogToTrace();
+    }
 }

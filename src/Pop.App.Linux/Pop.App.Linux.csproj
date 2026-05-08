@@ -13,9 +13,16 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <AvaloniaResource Include="..\..\official_icon.png" Link="Assets\official_icon.png" />
     <EmbeddedResource Include="Platform\KWin\pop-wayland.js" LogicalName="Pop.App.Linux.Platform.KWin.pop-wayland.js" />
     <ProjectReference Include="..\Pop.Core\Pop.Core.csproj" />
     <ProjectReference Include="..\Pop.Platform.Abstractions\Pop.Platform.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Avalonia" Version="11.3.7" />
+    <PackageReference Include="Avalonia.Desktop" Version="11.3.7" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.7" />
   </ItemGroup>
 
 </Project>
