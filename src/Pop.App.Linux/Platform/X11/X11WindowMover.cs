@@ -74,12 +74,15 @@ public sealed class X11WindowMover : IWindowMover
             Data4 = new IntPtr(Math.Max(1, bounds.Height))
         };
 
-        X11Native.XSendEvent(
-            _connection.Display,
-            _connection.RootWindow,
-            X11Native.False,
-            new IntPtr(X11Native.SubstructureRedirectMask | X11Native.SubstructureNotifyMask),
-            ref ev);
-        X11Native.XFlush(_connection.Display);
+        lock (_connection.SyncRoot)
+        {
+            X11Native.XSendEvent(
+                _connection.Display,
+                _connection.RootWindow,
+                X11Native.False,
+                new IntPtr(X11Native.SubstructureRedirectMask | X11Native.SubstructureNotifyMask),
+                ref ev);
+            X11Native.XFlush(_connection.Display);
+        }
     }
 }

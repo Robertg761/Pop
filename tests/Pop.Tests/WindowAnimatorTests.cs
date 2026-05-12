@@ -35,4 +35,17 @@ public sealed class WindowAnimatorTests
 
         Assert.True(fastPlan.MaxOvershootPx >= slowPlan.MaxOvershootPx);
     }
+
+    [Fact]
+    public void CreatePlan_UsesConfiguredFrameRate()
+    {
+        var animator = new WindowAnimator(60d);
+        var startBounds = new Rectangle(400, 160, 900, 620);
+        var targetBounds = new Rectangle(0, 0, 960, 1040);
+
+        var plan = animator.CreatePlan(startBounds, targetBounds, 1800, 220);
+
+        Assert.Equal(14, plan.Frames.Count);
+        Assert.Equal(targetBounds, plan.Frames[^1].Bounds);
+    }
 }

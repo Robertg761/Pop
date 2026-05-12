@@ -9,6 +9,7 @@ namespace Pop.App.Linux.Platform.X11;
 public sealed class X11PollingDragTracker : IDragTracker
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(8);
+    private static readonly TimeSpan StateRefreshInterval = TimeSpan.FromMilliseconds(64);
     private readonly X11DisplayConnection _connection;
     private readonly IWindowInspector _windowInspector;
     private readonly Func<uint, bool> _isCtrlPressedAccessor;
@@ -16,6 +17,7 @@ public sealed class X11PollingDragTracker : IDragTracker
     private Task? _pollingTask;
     private DragSession? _activeSession;
     private bool _wasLeftButtonDown;
+    private DateTimeOffset _nextStateRefreshAt;
 
     public X11PollingDragTracker(
         X11DisplayConnection connection,
@@ -59,6 +61,7 @@ public sealed class X11PollingDragTracker : IDragTracker
         _pollingTask = null;
         _activeSession = null;
         _wasLeftButtonDown = false;
+        _nextStateRefreshAt = DateTimeOffset.MinValue;
     }
 
     public void Dispose()
@@ -96,16 +99,23 @@ public sealed class X11PollingDragTracker : IDragTracker
 
     private X11PointerSnapshot QueryPointer()
     {
-        var success = X11Native.XQueryPointer(
-            _connection.Display,
-            _connection.RootWindow,
-            out _,
-            out _,
-            out var rootX,
-            out var rootY,
-            out _,
-            out _,
-            out var mask);
+        int success;
+        int rootX;
+        int rootY;
+        uint mask;
+        lock (_connection.SyncRoot)
+        {
+            success = X11Native.XQueryPointer(
+                _connection.Display,
+                _connection.RootWindow,
+                out _,
+                out _,
+                out rootX,
+                out rootY,
+                out _,
+                out _,
+                out mask);
+        }
 
         return success == X11Native.False
             ? X11PointerSnapshot.Empty
@@ -126,6 +136,7 @@ public sealed class X11PollingDragTracker : IDragTracker
         var session = new DragSession(inspection.WindowHandle, inspection.MonitorInfo, inspection.Bounds);
         session.AddSample(new DragSample(point, timestamp));
         RefreshCurrentSessionState(session);
+        _nextStateRefreshAt = timestamp + StateRefreshInterval;
         _activeSession = session;
         DragStarted?.Invoke(this, new DragSessionEventArgs(session));
     }
@@ -138,7 +149,13 @@ public sealed class X11PollingDragTracker : IDragTracker
         }
 
         _activeSession.AddSample(new DragSample(point, timestamp));
-        RefreshCurrentSessionState(_activeSession);
+        _activeSession.UpdateCurrentBounds(_activeSession.GetCurrentBoundsEstimate());
+        if (timestamp >= _nextStateRefreshAt)
+        {
+            RefreshCurrentSessionState(_activeSession);
+            _nextStateRefreshAt = timestamp + StateRefreshInterval;
+        }
+
         DragUpdated?.Invoke(this, new DragSessionEventArgs(_activeSession));
     }
 

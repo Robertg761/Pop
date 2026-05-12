@@ -5,7 +5,15 @@ namespace Pop.Core.Services;
 
 public sealed class WindowAnimator
 {
-    private const double TargetFrameRate = 120d;
+    private const double DefaultTargetFrameRate = 120d;
+    private readonly double _targetFrameRate;
+
+    public WindowAnimator(double targetFrameRate = DefaultTargetFrameRate)
+    {
+        _targetFrameRate = double.IsFinite(targetFrameRate)
+            ? Math.Clamp(targetFrameRate, 1d, 240d)
+            : DefaultTargetFrameRate;
+    }
 
     public AnimationPlan CreatePlan(Rectangle startBounds, Rectangle targetBounds, double releaseVelocityX, int durationMs)
     {
@@ -19,7 +27,7 @@ public sealed class WindowAnimator
             return new AnimationPlan([new AnimationFrame(TimeSpan.Zero, targetBounds)], targetBounds, durationMs, 0);
         }
 
-        var frameCount = Math.Max(2, (int)Math.Ceiling((durationMs / 1000d) * TargetFrameRate));
+        var frameCount = Math.Max(2, (int)Math.Ceiling((durationMs / 1000d) * _targetFrameRate));
         var maxOvershootPx = CalculateOvershoot(startBounds, targetBounds, releaseVelocityX);
         var frames = new List<AnimationFrame>(frameCount);
 

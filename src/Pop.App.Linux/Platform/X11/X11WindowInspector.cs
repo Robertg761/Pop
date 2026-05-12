@@ -8,8 +8,11 @@ namespace Pop.App.Linux.Platform.X11;
 public sealed class X11WindowInspector : IWindowInspector
 {
     private const int FallbackTitleBarHeight = 48;
+    private static readonly TimeSpan MonitorInfoCacheDuration = TimeSpan.FromMilliseconds(250);
     private readonly X11DisplayConnection _connection;
     private readonly WindowEligibilityEvaluator _evaluator;
+    private MonitorInfo _cachedMonitorInfo;
+    private DateTimeOffset _cachedMonitorInfoValidUntil;
 
     public X11WindowInspector(X11DisplayConnection connection, WindowEligibilityEvaluator evaluator)
     {
@@ -26,7 +29,7 @@ public sealed class X11WindowInspector : IWindowInspector
         }
 
         var frameWindow = pointer.ChildWindow;
-        var clientWindow = FindClientWindow(frameWindow);
+        var clientWindow = FindClientWindow(frameWindow, new ClientWindowLookup(_connection));
         if (clientWindow == IntPtr.Zero)
         {
             return CreateUnsupportedResult();
@@ -44,13 +47,20 @@ public sealed class X11WindowInspector : IWindowInspector
     public MonitorInfo InspectMonitorAt(Point screenPoint)
     {
         _ = screenPoint;
+        var now = DateTimeOffset.UtcNow;
+        if (_cachedMonitorInfo != MonitorInfo.Empty && now < _cachedMonitorInfoValidUntil)
+        {
+            return _cachedMonitorInfo;
+        }
+
         var displayBounds = new Rectangle(
             0,
             0,
-            X11Native.XDisplayWidth(_connection.Display, _connection.Screen),
-            X11Native.XDisplayHeight(_connection.Display, _connection.Screen));
+            GetDisplayWidth(),
+            GetDisplayHeight());
 
         var workAreaValues = X11PropertyReader.ReadLongArray(_connection, _connection.RootWindow, _connection.Atoms.NetWorkarea);
+        MonitorInfo monitorInfo;
         if (workAreaValues.Count >= 4)
         {
             var workArea = new Rectangle(
@@ -58,10 +68,16 @@ public sealed class X11WindowInspector : IWindowInspector
                 checked((int)workAreaValues[1]),
                 checked((int)workAreaValues[2]),
                 checked((int)workAreaValues[3]));
-            return new MonitorInfo(displayBounds, workArea);
+            monitorInfo = new MonitorInfo(displayBounds, workArea);
+        }
+        else
+        {
+            monitorInfo = new MonitorInfo(displayBounds, displayBounds);
         }
 
-        return new MonitorInfo(displayBounds, displayBounds);
+        _cachedMonitorInfo = monitorInfo;
+        _cachedMonitorInfoValidUntil = now + MonitorInfoCacheDuration;
+        return monitorInfo;
     }
 
     public WindowStateSnapshot InspectWindowState(IntPtr windowHandle)
@@ -104,41 +120,57 @@ public sealed class X11WindowInspector : IWindowInspector
 
     private X11PointerSnapshot QueryPointer()
     {
-        var success = X11Native.XQueryPointer(
-            _connection.Display,
-            _connection.RootWindow,
-            out _,
-            out var child,
-            out var rootX,
-            out var rootY,
-            out _,
-            out _,
-            out var mask);
+        int success;
+        IntPtr child;
+        int rootX;
+        int rootY;
+        uint mask;
+        lock (_connection.SyncRoot)
+        {
+            success = X11Native.XQueryPointer(
+                _connection.Display,
+                _connection.RootWindow,
+                out _,
+                out child,
+                out rootX,
+                out rootY,
+                out _,
+                out _,
+                out mask);
+        }
 
         return success == X11Native.False
             ? X11PointerSnapshot.Empty
             : new X11PointerSnapshot(child, new Point(rootX, rootY), mask);
     }
 
-    private IntPtr FindClientWindow(IntPtr window)
+    private IntPtr FindClientWindow(IntPtr window, ClientWindowLookup clientWindowLookup)
     {
         if (window == IntPtr.Zero)
         {
             return IntPtr.Zero;
         }
 
-        if (IsClientWindow(window))
+        if (IsClientWindow(window, clientWindowLookup))
         {
             return window;
         }
 
-        if (X11Native.XQueryTree(
+        int queryTreeResult;
+        IntPtr children;
+        uint childrenCount;
+        lock (_connection.SyncRoot)
+        {
+            queryTreeResult = X11Native.XQueryTree(
                 _connection.Display,
                 window,
                 out _,
                 out _,
-                out var children,
-                out var childrenCount) == X11Native.False || children == IntPtr.Zero)
+                out children,
+                out childrenCount);
+        }
+
+        if (queryTreeResult == X11Native.False || children == IntPtr.Zero)
         {
             return IntPtr.Zero;
         }
@@ -148,7 +180,7 @@ public sealed class X11WindowInspector : IWindowInspector
             for (var index = 0; index < childrenCount; index++)
             {
                 var child = System.Runtime.InteropServices.Marshal.ReadIntPtr(children, checked((int)index) * IntPtr.Size);
-                var client = FindClientWindow(child);
+                var client = FindClientWindow(child, clientWindowLookup);
                 if (client != IntPtr.Zero)
                 {
                     return client;
@@ -157,58 +189,103 @@ public sealed class X11WindowInspector : IWindowInspector
         }
         finally
         {
-            X11Native.XFree(children);
+            lock (_connection.SyncRoot)
+            {
+                X11Native.XFree(children);
+            }
         }
 
         return IntPtr.Zero;
     }
 
-    private bool IsClientWindow(IntPtr window)
+    private bool IsClientWindow(IntPtr window, ClientWindowLookup clientWindowLookup)
     {
         if (X11PropertyReader.ReadLongArray(_connection, window, _connection.Atoms.WmState).Count > 0)
         {
             return true;
         }
 
-        return X11PropertyReader
-            .ReadIntPtrArray(_connection, _connection.RootWindow, _connection.Atoms.NetClientList, X11Native.XaWindow.ToInt64())
-            .Contains(window);
+        return clientWindowLookup.Contains(window);
     }
 
     private Rectangle GetWindowBounds(IntPtr window)
     {
-        if (window == IntPtr.Zero ||
-            X11Native.XGetGeometry(
+        if (window == IntPtr.Zero)
+        {
+            return Rectangle.Empty;
+        }
+
+        int geometryResult;
+        uint width;
+        uint height;
+        int rootX;
+        int rootY;
+        lock (_connection.SyncRoot)
+        {
+            geometryResult = X11Native.XGetGeometry(
                 _connection.Display,
                 window,
                 out _,
                 out _,
                 out _,
-                out var width,
-                out var height,
+                out width,
+                out height,
                 out _,
-                out _) == X11Native.False)
+                out _);
+
+            if (geometryResult != X11Native.False)
+            {
+                X11Native.XTranslateCoordinates(
+                    _connection.Display,
+                    window,
+                    _connection.RootWindow,
+                    0,
+                    0,
+                    out rootX,
+                    out rootY,
+                    out _);
+            }
+            else
+            {
+                rootX = 0;
+                rootY = 0;
+            }
+        }
+
+        if (geometryResult == X11Native.False)
         {
             return Rectangle.Empty;
         }
-
-        X11Native.XTranslateCoordinates(
-            _connection.Display,
-            window,
-            _connection.RootWindow,
-            0,
-            0,
-            out var rootX,
-            out var rootY,
-            out _);
 
         return new Rectangle(rootX, rootY, checked((int)width), checked((int)height));
     }
 
     private bool IsViewable(IntPtr window)
     {
-        return X11Native.XGetWindowAttributes(_connection.Display, window, out var attributes) != X11Native.False &&
-               attributes.MapState == X11Native.IsViewable;
+        int result;
+        X11Native.XWindowAttributes attributes;
+        lock (_connection.SyncRoot)
+        {
+            result = X11Native.XGetWindowAttributes(_connection.Display, window, out attributes);
+        }
+
+        return result != X11Native.False && attributes.MapState == X11Native.IsViewable;
+    }
+
+    private int GetDisplayWidth()
+    {
+        lock (_connection.SyncRoot)
+        {
+            return X11Native.XDisplayWidth(_connection.Display, _connection.Screen);
+        }
+    }
+
+    private int GetDisplayHeight()
+    {
+        lock (_connection.SyncRoot)
+        {
+            return X11Native.XDisplayHeight(_connection.Display, _connection.Screen);
+        }
     }
 
     private static bool IsCaptionHit(IntPtr clientWindow, IntPtr frameWindow, Point point, Rectangle clientBounds, Rectangle frameBounds)
@@ -242,5 +319,25 @@ public sealed class X11WindowInspector : IWindowInspector
     private readonly record struct X11PointerSnapshot(IntPtr ChildWindow, Point Position, uint ButtonMask)
     {
         public static X11PointerSnapshot Empty { get; } = new(IntPtr.Zero, Point.Empty, 0);
+    }
+
+    private sealed class ClientWindowLookup
+    {
+        private readonly X11DisplayConnection _connection;
+        private HashSet<IntPtr>? _clientWindows;
+
+        public ClientWindowLookup(X11DisplayConnection connection)
+        {
+            _connection = connection;
+        }
+
+        public bool Contains(IntPtr window)
+        {
+            _clientWindows ??= X11PropertyReader
+                .ReadIntPtrArray(_connection, _connection.RootWindow, _connection.Atoms.NetClientList, X11Native.XaWindow.ToInt64())
+                .ToHashSet();
+
+            return _clientWindows.Contains(window);
+        }
     }
 }

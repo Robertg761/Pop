@@ -18,6 +18,8 @@ public sealed class X11DisplayConnection : IDisposable
 
     internal X11Atoms Atoms { get; }
 
+    internal object SyncRoot { get; } = new();
+
     public static X11DisplayConnection Open()
     {
         var display = X11Native.XOpenDisplay(IntPtr.Zero);
@@ -33,7 +35,10 @@ public sealed class X11DisplayConnection : IDisposable
     {
         if (Display != IntPtr.Zero)
         {
-            X11Native.XCloseDisplay(Display);
+            lock (SyncRoot)
+            {
+                X11Native.XCloseDisplay(Display);
+            }
         }
     }
 }

@@ -16,19 +16,26 @@ internal static class X11PropertyReader
             return [];
         }
 
-        var status = X11Native.XGetWindowProperty(
-            connection.Display,
-            window,
-            property,
-            IntPtr.Zero,
-            new IntPtr(1024),
-            X11Native.False,
-            new IntPtr(propertyType),
-            out _,
-            out var actualFormat,
-            out var itemsCount,
-            out _,
-            out var data);
+        int status;
+        int actualFormat;
+        nuint itemsCount;
+        IntPtr data;
+        lock (connection.SyncRoot)
+        {
+            status = X11Native.XGetWindowProperty(
+                connection.Display,
+                window,
+                property,
+                IntPtr.Zero,
+                new IntPtr(1024),
+                X11Native.False,
+                new IntPtr(propertyType),
+                out _,
+                out actualFormat,
+                out itemsCount,
+                out _,
+                out data);
+        }
 
         if (status != X11Native.Success || data == IntPtr.Zero || itemsCount == 0)
         {
@@ -58,7 +65,10 @@ internal static class X11PropertyReader
         }
         finally
         {
-            X11Native.XFree(data);
+            lock (connection.SyncRoot)
+            {
+                X11Native.XFree(data);
+            }
         }
     }
 
@@ -69,19 +79,26 @@ internal static class X11PropertyReader
             return [];
         }
 
-        var status = X11Native.XGetWindowProperty(
-            connection.Display,
-            window,
-            property,
-            IntPtr.Zero,
-            new IntPtr(1024),
-            X11Native.False,
-            X11Native.AnyPropertyType == 0 ? IntPtr.Zero : new IntPtr(X11Native.AnyPropertyType),
-            out _,
-            out var actualFormat,
-            out var itemsCount,
-            out _,
-            out var data);
+        int status;
+        int actualFormat;
+        nuint itemsCount;
+        IntPtr data;
+        lock (connection.SyncRoot)
+        {
+            status = X11Native.XGetWindowProperty(
+                connection.Display,
+                window,
+                property,
+                IntPtr.Zero,
+                new IntPtr(1024),
+                X11Native.False,
+                X11Native.AnyPropertyType == 0 ? IntPtr.Zero : new IntPtr(X11Native.AnyPropertyType),
+                out _,
+                out actualFormat,
+                out itemsCount,
+                out _,
+                out data);
+        }
 
         if (status != X11Native.Success || data == IntPtr.Zero || itemsCount == 0)
         {
@@ -111,7 +128,10 @@ internal static class X11PropertyReader
         }
         finally
         {
-            X11Native.XFree(data);
+            lock (connection.SyncRoot)
+            {
+                X11Native.XFree(data);
+            }
         }
     }
 }

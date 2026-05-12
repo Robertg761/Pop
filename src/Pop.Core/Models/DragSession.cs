@@ -6,9 +6,12 @@ namespace Pop.Core.Models;
 public sealed class DragSession
 {
     private readonly List<DragSample> _samples = [];
+    private readonly ReadOnlyCollection<DragSample> _sampleView;
+    private DragSample? _firstSample;
 
     public DragSession(IntPtr windowHandle, MonitorInfo monitorInfo, Rectangle initialBounds)
     {
+        _sampleView = _samples.AsReadOnly();
         WindowHandle = windowHandle;
         MonitorInfo = monitorInfo;
         CurrentMonitorInfo = monitorInfo;
@@ -32,10 +35,11 @@ public sealed class DragSession
 
     public DragSample? ReleaseSample { get; private set; }
 
-    public ReadOnlyCollection<DragSample> Samples => _samples.AsReadOnly();
+    public ReadOnlyCollection<DragSample> Samples => _sampleView;
 
     public void AddSample(DragSample sample)
     {
+        _firstSample ??= sample;
         _samples.Add(sample);
 
         if (_samples.Count > 48)
@@ -51,7 +55,7 @@ public sealed class DragSession
             return InitialBounds;
         }
 
-        var first = _samples[0].Position;
+        var first = (_firstSample ?? _samples[0]).Position;
         var last = _samples[^1].Position;
         var deltaX = last.X - first.X;
         var deltaY = last.Y - first.Y;

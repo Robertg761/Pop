@@ -21,7 +21,7 @@ public sealed class LinuxPopHost : IDisposable
     private readonly ISnapDecider? _snapDecider;
     private readonly IWindowSnapBoundsCalculator? _snapBoundsCalculator;
     private readonly IWindowMover? _windowMover;
-    private readonly WindowAnimator _windowAnimator = new();
+    private readonly WindowAnimator _windowAnimator = new(60d);
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
 

@@ -6,7 +6,7 @@ const MIN_HORIZONTAL_VELOCITY = __POP_MIN_HORIZONTAL_VELOCITY__;
 const HORIZONTAL_DOMINANCE_RATIO = __POP_HORIZONTAL_DOMINANCE_RATIO__;
 
 let sessions = new Map();
-let timers = [];
+let animationTimers = new Map();
 
 function now() {
     return Date.now();
@@ -85,6 +85,8 @@ function interpolate(start, end, progress) {
 }
 
 function animateWindow(window, target) {
+    stopAnimation(window);
+
     if (GLIDE_DURATION_MS <= 50) {
         setFrameGeometry(window, target);
         return;
@@ -100,6 +102,7 @@ function animateWindow(window, target) {
 
     function step() {
         if (!window || !isEligibleWindow(window)) {
+            stopAnimation(window);
             return;
         }
 
@@ -112,7 +115,12 @@ function animateWindow(window, target) {
             height: interpolate(start.height, target.height, eased)
         });
 
-        if (progress < 1 && !scheduleStep(step)) {
+        if (progress < 1) {
+            if (!scheduleStep(window, step)) {
+                setFrameGeometry(window, target);
+            }
+        } else {
+            stopAnimation(window);
             setFrameGeometry(window, target);
         }
     }
@@ -120,19 +128,31 @@ function animateWindow(window, target) {
     step();
 }
 
-function scheduleStep(callback) {
+function stopAnimation(window) {
+    const timer = animationTimers.get(window);
+    if (!timer) {
+        return;
+    }
+
+    animationTimers.delete(window);
+    try {
+        timer.stop();
+    } catch (error) {
+    }
+}
+
+function scheduleStep(window, callback) {
     try {
         let timer = new QTimer();
-        timers.push(timer);
         timer.singleShot = true;
         timer.timeout.connect(function () {
-            const index = timers.indexOf(timer);
-            if (index >= 0) {
-                timers.splice(index, 1);
+            if (animationTimers.get(window) === timer) {
+                animationTimers.delete(window);
             }
 
             callback();
         });
+        animationTimers.set(window, timer);
         timer.start(16);
         return true;
     } catch (error) {
