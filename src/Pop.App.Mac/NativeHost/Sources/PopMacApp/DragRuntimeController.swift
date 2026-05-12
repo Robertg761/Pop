@@ -189,7 +189,7 @@ final class PopRuntimeController {
     private lazy var dragTracker = GlobalDragTracker(windowSystem: windowSystem, screenCoordinator: screenCoordinator)
     private let bridgeClient = PopMacBridgeClient()
     private lazy var diagnosticsLogger = DiagnosticsLogger(directoryURL: settingsStore.directoryURL, bridgeClient: bridgeClient)
-    private var snapRestoreStates: [Int: SnapRestoreState] = [:]
+    private var snapRestoreStates: [CFHashCode: SnapRestoreState] = [:]
 
     private(set) var settings = AppSettings.default
     private(set) var permissionState: AccessibilityPermissionState = .needsApproval
@@ -362,7 +362,7 @@ final class PopRuntimeController {
         return restoreBounds
     }
 
-    private func restoreKey(for window: AXUIElement) -> Int {
+    private func restoreKey(for window: AXUIElement) -> CFHashCode {
         CFHash(window)
     }
 
