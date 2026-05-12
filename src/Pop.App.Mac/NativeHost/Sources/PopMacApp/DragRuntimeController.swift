@@ -13,6 +13,7 @@ private final class GlobalDragTracker {
     }
 
     var onRejected: ((DesktopPoint, String) -> Void)?
+    var onRestoreRequested: ((ActiveSession, DesktopPoint) -> DesktopRect?)?
     var onCompleted: ((ActiveSession, Bool) -> Void)?
 
     private let windowSystem: AccessibilityWindowSystem
@@ -97,6 +98,19 @@ private final class GlobalDragTracker {
                 return
             }
 
+            if let restoredBounds = onRestoreRequested?(session, point) {
+                windowSystem.move(window: session.window, to: restoredBounds)
+                session.initialBounds = restoredBounds
+                session.currentBounds = restoredBounds
+                if let monitor = screenCoordinator.monitor(containing: restoredBounds) {
+                    session.currentMonitor = monitor
+                }
+
+                session.samples = [DragSample(point: point, timestampUnixMilliseconds: timestamp)]
+                activeSession = session
+                return
+            }
+
             session.samples.append(DragSample(point: point, timestampUnixMilliseconds: timestamp))
             if let state = windowSystem.currentState(of: session.window) {
                 session.currentBounds = state.bounds
@@ -175,9 +189,15 @@ final class PopRuntimeController {
     private lazy var dragTracker = GlobalDragTracker(windowSystem: windowSystem, screenCoordinator: screenCoordinator)
     private let bridgeClient = PopMacBridgeClient()
     private lazy var diagnosticsLogger = DiagnosticsLogger(directoryURL: settingsStore.directoryURL, bridgeClient: bridgeClient)
+    private var snapRestoreStates: [Int: SnapRestoreState] = [:]
 
     private(set) var settings = AppSettings.default
     private(set) var permissionState: AccessibilityPermissionState = .needsApproval
+
+    private struct SnapRestoreState {
+        var restoreBounds: DesktopRect
+        var snappedBounds: DesktopRect
+    }
 
     init(
         settingsStore: AppSettingsStore = AppSettingsStore(),
@@ -201,6 +221,9 @@ final class PopRuntimeController {
                     "point": "{\(point.x),\(point.y)}"
                 ],
                 enabled: self?.settings.enableDiagnostics == true)
+        }
+        dragTracker.onRestoreRequested = { [weak self] session, point in
+            self?.restoreBoundsForStartedDrag(session: session, point: point)
         }
         dragTracker.onCompleted = { [weak self] session, isOptionPressed in
             self?.handleCompletedDrag(session: session, isOptionPressed: isOptionPressed)
@@ -305,7 +328,42 @@ final class PopRuntimeController {
             ],
             enabled: settings.enableDiagnostics)
 
+        snapRestoreStates[restoreKey(for: session.window)] = SnapRestoreState(
+            restoreBounds: session.initialBounds,
+            snappedBounds: plan.finalBounds)
         animate(window: session.window, frames: plan.frames, finalBounds: plan.finalBounds, index: 0, startedAt: DispatchTime.now())
+    }
+
+    private func restoreBoundsForStartedDrag(session: GlobalDragTracker.ActiveSession, point: DesktopPoint) -> DesktopRect? {
+        let key = restoreKey(for: session.window)
+        guard let restoreState = snapRestoreStates[key] else {
+            return nil
+        }
+
+        guard let restoreBounds = bridgeClient.restoreBounds(
+            currentBounds: session.currentBounds,
+            snappedBounds: restoreState.snappedBounds,
+            previousBounds: restoreState.restoreBounds,
+            dragPoint: point,
+            workArea: session.currentMonitor.visibleFrame) else {
+            snapRestoreStates.removeValue(forKey: key)
+            return nil
+        }
+
+        snapRestoreStates.removeValue(forKey: key)
+        diagnosticsLogger.write(
+            category: "drag-restore",
+            message: "Restored a previously snapped window before continuing the drag.",
+            fields: [
+                "restoreBounds": "\(restoreBounds)",
+                "snappedBounds": "\(restoreState.snappedBounds)"
+            ],
+            enabled: settings.enableDiagnostics)
+        return restoreBounds
+    }
+
+    private func restoreKey(for window: AXUIElement) -> Int {
+        CFHash(window)
     }
 
     private func animate(window: AXUIElement, frames: [BridgeAnimationFrame], finalBounds: DesktopRect, index: Int, startedAt: DispatchTime) {

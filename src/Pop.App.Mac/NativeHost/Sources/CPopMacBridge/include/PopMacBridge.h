@@ -68,6 +68,11 @@ typedef struct {
 } PopAnimationPlanDto;
 
 typedef struct {
+    uint8_t shouldRestore;
+    PopRectDto bounds;
+} PopRestoreBoundsDto;
+
+typedef struct {
     const char *key;
     const char *value;
 } PopDiagnosticFieldDto;
@@ -89,6 +94,13 @@ PopAnimationPlanDto PopMacBridge_CreateAnimationPlan(
     int32_t durationMs);
 
 void PopMacBridge_FreeAnimationPlan(PopAnimationPlanDto plan);
+
+PopRestoreBoundsDto PopMacBridge_CreateRestoreBounds(
+    PopRectDto currentBounds,
+    PopRectDto snappedBounds,
+    PopRectDto previousBounds,
+    PopPointDto dragPoint,
+    PopRectDto workArea);
 
 char *PopMacBridge_FormatDiagnosticEvent(
     int64_t timestampUnixMilliseconds,

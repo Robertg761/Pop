@@ -205,6 +205,20 @@ public readonly struct PopAnimationPlanDto
 }
 
 [StructLayout(LayoutKind.Sequential)]
+public readonly struct PopRestoreBoundsDto
+{
+    public PopRestoreBoundsDto(byte shouldRestore, PopRectDto bounds)
+    {
+        ShouldRestore = shouldRestore;
+        Bounds = bounds;
+    }
+
+    public byte ShouldRestore { get; }
+
+    public PopRectDto Bounds { get; }
+}
+
+[StructLayout(LayoutKind.Sequential)]
 public readonly struct PopDiagnosticFieldDto
 {
     public PopDiagnosticFieldDto(IntPtr key, IntPtr value)

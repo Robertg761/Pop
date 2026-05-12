@@ -45,6 +45,17 @@ public static unsafe class MacBridgeExports
         MacBridgeRuntime.FreeAnimationPlanManaged(plan);
     }
 
+    [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_CreateRestoreBounds")]
+    public static PopRestoreBoundsDto CreateRestoreBounds(
+        PopRectDto currentBounds,
+        PopRectDto snappedBounds,
+        PopRectDto previousBounds,
+        PopPointDto dragPoint,
+        PopRectDto workArea)
+    {
+        return MacBridgeRuntime.CreateRestoreBoundsManaged(currentBounds, snappedBounds, previousBounds, dragPoint, workArea);
+    }
+
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_FormatDiagnosticEvent")]
     public static IntPtr FormatDiagnosticEvent(
         long timestampUnixMilliseconds,

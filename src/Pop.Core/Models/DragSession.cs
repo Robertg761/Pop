@@ -25,7 +25,7 @@ public sealed class DragSession
 
     public MonitorInfo CurrentMonitorInfo { get; private set; }
 
-    public Rectangle InitialBounds { get; }
+    public Rectangle InitialBounds { get; private set; }
 
     public Rectangle CurrentBounds { get; private set; }
 
@@ -75,6 +75,15 @@ public sealed class DragSession
     public void UpdateCurrentBounds(Rectangle bounds)
     {
         CurrentBounds = bounds;
+    }
+
+    public void ResetDragOrigin(Rectangle bounds, DragSample originSample)
+    {
+        InitialBounds = bounds;
+        CurrentBounds = bounds;
+        _samples.Clear();
+        _firstSample = null;
+        AddSample(originSample);
     }
 
     public void CompleteRelease(DragSample sample, bool isCtrlPressedAtRelease)

@@ -4,9 +4,13 @@ const POP_ENABLED = __POP_ENABLED__;
 const GLIDE_DURATION_MS = __POP_GLIDE_DURATION_MS__;
 const MIN_HORIZONTAL_VELOCITY = __POP_MIN_HORIZONTAL_VELOCITY__;
 const HORIZONTAL_DOMINANCE_RATIO = __POP_HORIZONTAL_DOMINANCE_RATIO__;
+const SNAP_RESTORE_TOLERANCE_PX = 96;
+const MINIMUM_VISIBLE_WIDTH = 120;
+const MINIMUM_VISIBLE_HEIGHT = 40;
 
 let sessions = new Map();
 let animationTimers = new Map();
+let restoreStates = new Map();
 
 function now() {
     return Date.now();
@@ -50,7 +54,7 @@ function workAreaFor(window) {
     }
 }
 
-function snapWindow(window, target) {
+function snapWindow(window, target, restoreBounds) {
     const area = workAreaFor(window);
     const width = Math.floor(Number(area.width) / 2);
     const height = Math.floor(Number(area.height));
@@ -58,13 +62,116 @@ function snapWindow(window, target) {
         ? Math.floor(Number(area.x) + Number(area.width) - width)
         : Math.floor(Number(area.x));
     const y = Math.floor(Number(area.y));
-
-    animateWindow(window, {
+    const snappedBounds = {
         x: x,
         y: y,
         width: width,
         height: height
+    };
+
+    restoreStates.set(window, {
+        restoreBounds: cloneBounds(restoreBounds),
+        snappedBounds: cloneBounds(snappedBounds)
     });
+    animateWindow(window, snappedBounds);
+}
+
+function cloneBounds(bounds) {
+    return {
+        x: Number(bounds.x),
+        y: Number(bounds.y),
+        width: Number(bounds.width),
+        height: Number(bounds.height)
+    };
+}
+
+function maxX(bounds) {
+    return Number(bounds.x) + Number(bounds.width);
+}
+
+function maxY(bounds) {
+    return Number(bounds.y) + Number(bounds.height);
+}
+
+function areBoundsClose(first, second) {
+    if (!first || !second) {
+        return false;
+    }
+
+    return Math.abs(Number(first.x) - Number(second.x)) <= SNAP_RESTORE_TOLERANCE_PX &&
+        Math.abs(Number(first.y) - Number(second.y)) <= SNAP_RESTORE_TOLERANCE_PX &&
+        Math.abs(maxX(first) - maxX(second)) <= SNAP_RESTORE_TOLERANCE_PX &&
+        Math.abs(maxY(first) - maxY(second)) <= SNAP_RESTORE_TOLERANCE_PX;
+}
+
+function clamp(value, minimum, maximum) {
+    return minimum <= maximum
+        ? Math.max(minimum, Math.min(maximum, value))
+        : value;
+}
+
+function currentCursorPoint(window) {
+    try {
+        const cursor = workspace.cursorPos;
+        if (cursor) {
+            return {
+                x: Number(cursor.x),
+                y: Number(cursor.y)
+            };
+        }
+    } catch (error) {
+    }
+
+    const geometry = window.frameGeometry;
+    return {
+        x: Number(geometry.x) + Math.round(Number(geometry.width) / 2),
+        y: Number(geometry.y) + 18
+    };
+}
+
+function createRestoreBounds(current, previous, pointer, workArea) {
+    const width = Math.max(1, Math.round(Number(previous.width)));
+    const height = Math.max(1, Math.round(Number(previous.height)));
+    const relativeX = Number(current.width) <= 0
+        ? 0.5
+        : (Number(pointer.x) - Number(current.x)) / Number(current.width);
+    const offsetX = Math.round(clamp(relativeX, 0, 1) * width);
+    const offsetY = clamp(Math.round(Number(pointer.y) - Number(current.y)), 0, Math.max(0, height - 1));
+
+    let x = Math.round(Number(pointer.x) - offsetX);
+    let y = Math.round(Number(pointer.y) - offsetY);
+    if (workArea) {
+        const visibleWidth = Math.min(MINIMUM_VISIBLE_WIDTH, Number(workArea.width));
+        const visibleHeight = Math.min(MINIMUM_VISIBLE_HEIGHT, Number(workArea.height));
+        x = clamp(x, Number(workArea.x) - width + visibleWidth, Number(workArea.x) + Number(workArea.width) - visibleWidth);
+        y = clamp(y, Number(workArea.y), Number(workArea.y) + Number(workArea.height) - visibleHeight);
+    }
+
+    return {
+        x: x,
+        y: y,
+        width: width,
+        height: height
+    };
+}
+
+function restoreWindowIfNeeded(window) {
+    const restoreState = restoreStates.get(window);
+    const current = cloneBounds(window.frameGeometry);
+    if (!restoreState) {
+        return current;
+    }
+
+    if (!areBoundsClose(current, restoreState.snappedBounds)) {
+        restoreStates.delete(window);
+        return current;
+    }
+
+    restoreStates.delete(window);
+    stopAnimation(window);
+    const restored = createRestoreBounds(current, restoreState.restoreBounds, currentCursorPoint(window), workAreaFor(window));
+    setFrameGeometry(window, restored);
+    return restored;
 }
 
 function setFrameGeometry(window, target) {
@@ -187,7 +294,7 @@ function finishSession(window) {
         return;
     }
 
-    snapWindow(window, velocityX < 0 ? "left" : "right");
+    snapWindow(window, velocityX < 0 ? "left" : "right", session.initialBounds);
 }
 
 function connectWindow(window) {
@@ -202,8 +309,10 @@ function connectWindow(window) {
             return;
         }
 
+        const initialBounds = restoreWindowIfNeeded(window);
         sessions.set(window, {
-            samples: [pointFromGeometry(window.frameGeometry)]
+            initialBounds: cloneBounds(initialBounds),
+            samples: [pointFromGeometry(initialBounds)]
         });
     });
 

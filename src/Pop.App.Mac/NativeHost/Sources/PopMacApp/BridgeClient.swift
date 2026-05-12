@@ -87,6 +87,23 @@ final class PopMacBridgeClient {
             maxOvershootPx: Int(nativePlan.maxOvershootPx))
     }
 
+    func restoreBounds(
+        currentBounds: DesktopRect,
+        snappedBounds: DesktopRect,
+        previousBounds: DesktopRect,
+        dragPoint: DesktopPoint,
+        workArea: DesktopRect
+    ) -> DesktopRect? {
+        let restore = PopMacBridge_CreateRestoreBounds(
+            currentBounds.dto,
+            snappedBounds.dto,
+            previousBounds.dto,
+            dragPoint.dto,
+            workArea.dto)
+
+        return restore.shouldRestore == 0 ? nil : DesktopRect(dto: restore.bounds)
+    }
+
     func formatDiagnosticEvent(timestamp: Date, category: String, message: String, fields: [String: String?]) -> String {
         let ownedFields = fields.map { (key: strdup($0.key), value: $0.value.flatMap { strdup($0) }) }
         defer {
@@ -169,6 +186,10 @@ private extension DesktopScreen {
 private extension DesktopPoint {
     init(dto: PopPointDto) {
         self.init(x: Int(dto.x), y: Int(dto.y))
+    }
+
+    var dto: PopPointDto {
+        PopPointDto(x: Int32(x), y: Int32(y))
     }
 }
 

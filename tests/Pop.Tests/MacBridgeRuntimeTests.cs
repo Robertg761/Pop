@@ -120,6 +120,20 @@ public sealed class MacBridgeRuntimeTests
     }
 
     [Fact]
+    public void CreateRestoreBoundsManaged_ReturnsPreviousSizeForSnappedWindow()
+    {
+        var restore = MacBridgeRuntime.CreateRestoreBoundsManaged(
+            currentBounds: new PopRectDto(0, 0, 960, 1040),
+            snappedBounds: new PopRectDto(0, 0, 960, 1040),
+            previousBounds: new PopRectDto(320, 140, 800, 600),
+            dragPoint: new PopPointDto(480, 18),
+            workArea: MainMonitor.WorkArea);
+
+        Assert.Equal(1, restore.ShouldRestore);
+        Assert.Equal(new PopRectDto(80, 0, 800, 600), restore.Bounds);
+    }
+
+    [Fact]
     public unsafe void CreateAnimationPlanManaged_AllocatesExpectedFrameBuffer()
     {
         var plan = MacBridgeRuntime.CreateAnimationPlanManaged(

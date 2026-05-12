@@ -28,6 +28,7 @@ public sealed class PopHost : IDisposable
     private readonly WindowAnimator _windowAnimator;
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
+    private readonly Dictionary<IntPtr, SnapRestoreState> _snapRestoreStates = [];
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Icon _trayIcon;
     private readonly Forms.ToolStripMenuItem _enabledMenuItem;
@@ -161,6 +162,8 @@ public sealed class PopHost : IDisposable
             return;
         }
 
+        TryRestorePreviousSnap(e.Session);
+
         var decision = _snapDecider.Decide(e.Session, _settings);
         e.Session.CurrentPredictedTarget = decision.Target;
     }
@@ -246,10 +249,71 @@ public sealed class PopHost : IDisposable
         try
         {
             await _windowMover.MoveWindowAsync(e.Session.WindowHandle, plan, _disposeCancellation.Token);
+            _snapRestoreStates[e.Session.WindowHandle] = new SnapRestoreState(e.Session.InitialBounds, plan.FinalBounds);
         }
         catch (OperationCanceledException)
         {
         }
+    }
+
+    private bool TryRestorePreviousSnap(DragSession session)
+    {
+        if (!_snapRestoreStates.TryGetValue(session.WindowHandle, out var restoreState) || session.Samples.Count == 0)
+        {
+            return false;
+        }
+
+        var dragSample = session.Samples[^1];
+        if (!SnapRestoreCalculator.TryCreateRestoreBounds(
+            session.CurrentBounds,
+            restoreState.SnappedBounds,
+            restoreState.RestoreBounds,
+            dragSample.Position,
+            session.CurrentMonitorInfo.WorkArea,
+            out var restoreBounds))
+        {
+            _snapRestoreStates.Remove(session.WindowHandle);
+            return false;
+        }
+
+        _snapRestoreStates.Remove(session.WindowHandle);
+        try
+        {
+            _windowMover.MoveWindowAsync(
+                session.WindowHandle,
+                CreateImmediateMovePlan(restoreBounds),
+                _disposeCancellation.Token).GetAwaiter().GetResult();
+        }
+        catch (OperationCanceledException)
+        {
+            return false;
+        }
+        catch (Exception exception)
+        {
+            LogDiagnostics("drag-restore", "Failed to restore a previously snapped window.", new Dictionary<string, string?>
+            {
+                ["windowHandle"] = session.WindowHandle.ToString("X"),
+                ["error"] = exception.Message
+            });
+            return false;
+        }
+
+        var state = _windowInspector.InspectWindowState(session.WindowHandle);
+        var actualBounds = state.Bounds != Rectangle.Empty ? state.Bounds : restoreBounds;
+        session.ResetDragOrigin(actualBounds, dragSample);
+        if (state.MonitorInfo != MonitorInfo.Empty)
+        {
+            session.UpdateCurrentMonitorInfo(state.MonitorInfo);
+        }
+
+        LogDiagnostics("drag-restore", "Restored a previously snapped window before continuing the drag.", new Dictionary<string, string?>
+        {
+            ["windowHandle"] = session.WindowHandle.ToString("X"),
+            ["restoreBounds"] = actualBounds.ToString(),
+            ["snappedBounds"] = restoreState.SnappedBounds.ToString()
+        });
+
+        return true;
     }
 
     private void RefreshSessionState(DragSession session)
@@ -264,6 +328,11 @@ public sealed class PopHost : IDisposable
         {
             session.UpdateCurrentMonitorInfo(state.MonitorInfo);
         }
+    }
+
+    private static AnimationPlan CreateImmediateMovePlan(Rectangle bounds)
+    {
+        return new AnimationPlan(Array.Empty<AnimationFrame>(), bounds, 0, 0);
     }
 
     private void OpenSettingsWindow()

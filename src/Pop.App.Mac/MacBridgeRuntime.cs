@@ -67,6 +67,24 @@ public static class MacBridgeRuntime
             plan.MaxOvershootPx);
     }
 
+    public static PopRestoreBoundsDto CreateRestoreBoundsManaged(
+        PopRectDto currentBounds,
+        PopRectDto snappedBounds,
+        PopRectDto previousBounds,
+        PopPointDto dragPoint,
+        PopRectDto workArea)
+    {
+        return SnapRestoreCalculator.TryCreateRestoreBounds(
+            currentBounds.ToRectangle(),
+            snappedBounds.ToRectangle(),
+            previousBounds.ToRectangle(),
+            dragPoint.ToPoint(),
+            workArea.ToRectangle(),
+            out var restoreBounds)
+            ? new PopRestoreBoundsDto(1, restoreBounds.ToDto())
+            : new PopRestoreBoundsDto(0, default);
+    }
+
     public static string FormatDiagnosticEventManaged(
         long timestampUnixMilliseconds,
         string category,
@@ -230,6 +248,8 @@ public static class MacBridgeDtoConversions
     public static MonitorInfo ToManaged(this PopMonitorInfoDto dto) => new(dto.Bounds.ToRectangle(), dto.WorkArea.ToRectangle());
 
     public static PopMonitorInfoDto ToDto(this MonitorInfo monitorInfo) => new(monitorInfo.Bounds.ToDto(), monitorInfo.WorkArea.ToDto());
+
+    public static Point ToPoint(this PopPointDto point) => new(point.X, point.Y);
 
     public static PopPointDto ToDto(this Point point) => new(point.X, point.Y);
 
