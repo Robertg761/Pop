@@ -18,18 +18,18 @@ public sealed class JsonSettingsStore(string? settingsDirectory = null, string f
     {
         if (!File.Exists(SettingsPath))
         {
-            return new AppSettings();
+            return AppSettings.Default;
         }
 
         try
         {
             await using var stream = File.OpenRead(SettingsPath);
             var settings = await JsonSerializer.DeserializeAsync(stream, PopJsonContext.Default.AppSettings, cancellationToken);
-            return settings ?? new AppSettings();
+            return settings ?? AppSettings.Default;
         }
         catch (JsonException)
         {
-            return new AppSettings();
+            return AppSettings.Default;
         }
     }
 

@@ -1,0 +1,63 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test-dotnet:
+    name: .NET tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test shared suite
+        run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
+
+  test-dotnet-windows:
+    name: .NET Windows tests
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test solution
+        run: dotnet test Pop.sln --configuration Release
+
+  test-macos:
+    name: macOS tests
+    runs-on: macos-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v5
+        with:
+          dotnet-version: 8.0.x
+
+      - name: Test shared .NET suite
+        run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
+
+      - name: Build macOS bridge
+        run: ./scripts/build-mac-bridge.sh
+
+      - name: Test macOS Swift package
+        run: swift test --package-path src/Pop.App.Mac/NativeHost

@@ -1,5 +1,7 @@
 import Foundation
 
+/// Cross-platform settings document. JSON keys must stay aligned with
+/// `contracts/app-settings.contract.json` and `Pop.Core.Models.AppSettings`.
 public struct AppSettings: Codable, Equatable, Sendable {
     public var enabled: Bool
     public var launchAtStartup: Bool

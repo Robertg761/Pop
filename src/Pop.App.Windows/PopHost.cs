@@ -22,10 +22,9 @@ public sealed class PopHost : IDisposable
     private readonly IUpdateService _updateService;
     private readonly IDragTracker _dragTracker;
     private readonly IWindowInspector _windowInspector;
-    private readonly ISnapDecider _snapDecider;
+    private readonly QualifiedSnapPlanner _snapPlanner;
     private readonly IWindowSnapBoundsCalculator _snapBoundsCalculator;
     private readonly IWindowMover _windowMover;
-    private readonly WindowAnimator _windowAnimator;
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly Dictionary<IntPtr, SnapRestoreState> _snapRestoreStates = [];
@@ -38,7 +37,7 @@ public sealed class PopHost : IDisposable
     private readonly Forms.ToolStripMenuItem _checkForUpdatesMenuItem;
     private readonly Forms.ToolStripMenuItem _installUpdateMenuItem;
 
-    private AppSettings _settings = new();
+    private AppSettings _settings = AppSettings.Default;
     private SettingsWindow? _settingsWindow;
     private UpdateState _lastUpdateState;
     private string? _lastNotifiedReadyVersion;
@@ -49,10 +48,9 @@ public sealed class PopHost : IDisposable
         _startupRegistration = new WindowsStartupRegistration();
         _updateService = new UpdateService();
         _windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
-        _snapDecider = new SnapDecider(_windowInspector.InspectMonitorAt);
+        _snapPlanner = new QualifiedSnapPlanner(new SnapDecider(_windowInspector.InspectMonitorAt));
         _snapBoundsCalculator = new WindowSnapBoundsCalculator();
         _windowMover = new Win32WindowMover();
-        _windowAnimator = new WindowAnimator();
 
         _dragTracker = new MouseHookDragTracker(_windowInspector);
         _dragTracker.DragRejected += OnDragRejected;
@@ -164,96 +162,72 @@ public sealed class PopHost : IDisposable
 
         TryRestorePreviousSnap(e.Session);
 
-        var decision = _snapDecider.Decide(e.Session, _settings);
+        var decision = _snapPlanner.Decide(e.Session, _settings);
         e.Session.CurrentPredictedTarget = decision.Target;
     }
 
     private async void OnDragCompleted(object? sender, DragSessionCompletedEventArgs e)
+    {
+        try
+        {
+            await HandleDragCompletedAsync(e.Session);
+        }
+        catch (OperationCanceledException)
+        {
+        }
+        catch (Exception exception)
+        {
+            LogDiagnostics(
+                "drag-error",
+                "Unexpected error while handling a completed drag.",
+                SnapDiagnosticFields.ForUnexpectedError(e.Session.WindowHandle, exception));
+        }
+    }
+
+    private async Task HandleDragCompletedAsync(DragSession session)
     {
         if (!_settings.Enabled)
         {
             return;
         }
 
-        var decision = _snapDecider.Decide(e.Session, _settings);
+        var decision = _snapPlanner.Decide(session, _settings);
         if (!decision.IsQualified)
         {
             LogDiagnostics(
                 "drag-release",
                 "Release did not qualify for snapping.",
-                new Dictionary<string, string?>
-                {
-                    ["ctrlRelease"] = e.Session.IsCtrlPressedAtRelease.ToString(),
-                    ["target"] = decision.Target.ToString(),
-                    ["reason"] = decision.RejectionReason.ToString(),
-                    ["velocityX"] = Math.Round(decision.HorizontalVelocityPxPerSec).ToString(),
-                    ["velocityY"] = Math.Round(decision.VerticalVelocityPxPerSec).ToString(),
-                    ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00"),
-                    ["projectedLandingPoint"] = decision.ProjectedLandingPoint.ToString(),
-                    ["releaseMonitor"] = e.Session.CurrentMonitorInfo.WorkArea.ToString(),
-                    ["targetMonitor"] = decision.TargetMonitorInfo.WorkArea.ToString()
-                });
+                SnapDiagnosticFields.ForRejectedRelease(session, decision));
             return;
         }
 
-        if (e.Session.CurrentMonitorInfo != e.Session.MonitorInfo)
+        // Windows sometimes needs a brief settle after cross-monitor drags before bounds refresh.
+        if (session.CurrentMonitorInfo != session.MonitorInfo)
         {
-            try
-            {
-                await Task.Delay(16, _disposeCancellation.Token);
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
+            await Task.Delay(16, _disposeCancellation.Token);
         }
 
-        RefreshSessionState(e.Session);
+        RefreshSessionState(session);
 
-        var activeMonitorInfo = decision.TargetMonitorInfo != MonitorInfo.Empty
-            ? decision.TargetMonitorInfo
-            : e.Session.CurrentMonitorInfo;
-        var visibleTileBounds = TileLayoutCalculator.GetTileBounds(decision.Target, activeMonitorInfo);
-        if (visibleTileBounds == Rectangle.Empty)
+        if (!_snapPlanner.TryCreatePlan(
+                session,
+                decision,
+                _settings,
+                _snapBoundsCalculator.GetSnapBounds,
+                out var plan))
         {
             return;
         }
 
-        var tileBounds = _snapBoundsCalculator.GetSnapBounds(e.Session.WindowHandle, visibleTileBounds);
-
-        e.Session.CurrentPredictedTarget = decision.Target;
-        var plan = _windowAnimator.CreatePlan(
-            e.Session.CurrentBounds,
-            tileBounds,
-            decision.HorizontalVelocityPxPerSec,
-            _settings.GlideDurationMs);
+        session.CurrentPredictedTarget = plan.Decision.Target;
 
         LogDiagnostics(
             "drag-release",
             "Snap qualified and animation plan generated.",
-            new Dictionary<string, string?>
-            {
-                ["ctrlRelease"] = e.Session.IsCtrlPressedAtRelease.ToString(),
-                ["target"] = decision.Target.ToString(),
-                ["reason"] = decision.RejectionReason.ToString(),
-                ["velocityX"] = Math.Round(decision.HorizontalVelocityPxPerSec).ToString(),
-                ["velocityY"] = Math.Round(decision.VerticalVelocityPxPerSec).ToString(),
-                ["dominance"] = decision.HorizontalDominanceRatio.ToString("0.00"),
-                ["projectedLandingPoint"] = decision.ProjectedLandingPoint.ToString(),
-                ["releaseMonitor"] = e.Session.CurrentMonitorInfo.WorkArea.ToString(),
-                ["targetMonitor"] = activeMonitorInfo.WorkArea.ToString(),
-                ["frames"] = plan.Frames.Count.ToString(),
-                ["overshootPx"] = plan.MaxOvershootPx.ToString()
-            });
+            SnapDiagnosticFields.ForQualifiedRelease(session, plan));
 
-        try
-        {
-            await _windowMover.MoveWindowAsync(e.Session.WindowHandle, plan, _disposeCancellation.Token);
-            _snapRestoreStates[e.Session.WindowHandle] = new SnapRestoreState(e.Session.InitialBounds, plan.FinalBounds);
-        }
-        catch (OperationCanceledException)
-        {
-        }
+        await _windowMover.MoveWindowAsync(session.WindowHandle, plan.AnimationPlan, _disposeCancellation.Token);
+        _snapRestoreStates[session.WindowHandle] = new SnapRestoreState(session.InitialBounds, plan.AnimationPlan.FinalBounds);
     }
 
     private bool TryRestorePreviousSnap(DragSession session)
@@ -281,7 +255,7 @@ public sealed class PopHost : IDisposable
         {
             _windowMover.MoveWindowAsync(
                 session.WindowHandle,
-                CreateImmediateMovePlan(restoreBounds),
+                WindowAnimator.CreateImmediatePlan(restoreBounds),
                 _disposeCancellation.Token).GetAwaiter().GetResult();
         }
         catch (OperationCanceledException)
@@ -290,11 +264,10 @@ public sealed class PopHost : IDisposable
         }
         catch (Exception exception)
         {
-            LogDiagnostics("drag-restore", "Failed to restore a previously snapped window.", new Dictionary<string, string?>
-            {
-                ["windowHandle"] = session.WindowHandle.ToString("X"),
-                ["error"] = exception.Message
-            });
+            LogDiagnostics(
+                "drag-restore",
+                "Failed to restore a previously snapped window.",
+                SnapDiagnosticFields.ForRestoreFailure(session.WindowHandle, exception));
             return false;
         }
 
@@ -306,12 +279,10 @@ public sealed class PopHost : IDisposable
             session.UpdateCurrentMonitorInfo(state.MonitorInfo);
         }
 
-        LogDiagnostics("drag-restore", "Restored a previously snapped window before continuing the drag.", new Dictionary<string, string?>
-        {
-            ["windowHandle"] = session.WindowHandle.ToString("X"),
-            ["restoreBounds"] = actualBounds.ToString(),
-            ["snappedBounds"] = restoreState.SnappedBounds.ToString()
-        });
+        LogDiagnostics(
+            "drag-restore",
+            "Restored a previously snapped window before continuing the drag.",
+            SnapDiagnosticFields.ForRestoreSuccess(session.WindowHandle, actualBounds, restoreState.SnappedBounds));
 
         return true;
     }
@@ -328,11 +299,6 @@ public sealed class PopHost : IDisposable
         {
             session.UpdateCurrentMonitorInfo(state.MonitorInfo);
         }
-    }
-
-    private static AnimationPlan CreateImmediateMovePlan(Rectangle bounds)
-    {
-        return new AnimationPlan(Array.Empty<AnimationFrame>(), bounds, 0, 0);
     }
 
     private void OpenSettingsWindow()

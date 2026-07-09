@@ -48,7 +48,7 @@ public sealed class JsonSettingsStoreTests : IDisposable
 
         var settings = await store.LoadAsync();
 
-        Assert.Equal(new AppSettings(), settings);
+        Assert.Equal(AppSettings.Default, settings);
     }
 
     public void Dispose()

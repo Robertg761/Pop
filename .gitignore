@@ -1,4 +1,5 @@
-artifacts/
+# Build outputs and local SDK copies
+artifacts/mac/
 .dotnet/
 .dotnet8/
 .vs/
@@ -16,3 +17,8 @@ src/Pop.App.Mac/NativeHost/.build/
 src/Pop.App.Mac/NativeHost/.swiftpm/
 src/Pop.App.Mac/NativeHost/*.xcodeproj/
 src/Pop.App.Mac/NativeHost/*.xcworkspace/
+
+# Keep branding sources tracked (artifacts/branding/*) while ignoring other artifact trees.
+artifacts/*
+!artifacts/branding/
+!artifacts/branding/**

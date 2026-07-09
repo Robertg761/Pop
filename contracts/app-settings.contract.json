@@ -1,0 +1,21 @@
+{
+  "schemaVersion": 1,
+  "description": "Canonical settings.json contract shared by Windows, macOS, and Linux. Keep Swift CodingKeys and C# AppSettings in sync with this file.",
+  "fileName": "settings.json",
+  "jsonPropertyNames": [
+    "Enabled",
+    "LaunchAtStartup",
+    "ThrowVelocityThresholdPxPerSec",
+    "HorizontalDominanceRatio",
+    "GlideDurationMs",
+    "EnableDiagnostics"
+  ],
+  "defaults": {
+    "Enabled": true,
+    "LaunchAtStartup": false,
+    "ThrowVelocityThresholdPxPerSec": 1800,
+    "HorizontalDominanceRatio": 1.75,
+    "GlideDurationMs": 220,
+    "EnableDiagnostics": false
+  }
+}

@@ -15,6 +15,9 @@ public sealed class WindowAnimator
             : DefaultTargetFrameRate;
     }
 
+    public static AnimationPlan CreateImmediatePlan(Rectangle bounds)
+        => new(Array.Empty<AnimationFrame>(), bounds, 0, 0);
+
     public AnimationPlan CreatePlan(Rectangle startBounds, Rectangle targetBounds, double releaseVelocityX, int durationMs)
     {
         if (startBounds == Rectangle.Empty || targetBounds == Rectangle.Empty)

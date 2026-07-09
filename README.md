@@ -2,15 +2,15 @@
 
 Pop is a desktop utility that adds momentum-based window snapping. Drag a window by its title bar, flick left or right, and Pop animates the window into the corresponding half of the current monitor.
 
-Windows support exists today, and the repo now includes a macOS Apple Silicon menu-bar app plus a Native AOT bridge that reuses the shared snap and animation logic from `Pop.Core`.
+Windows and macOS are first-class hosts. Linux is supported on X11 and Plasma Wayland (KWin). All platforms share snap qualification, tile math, and animation planning from `Pop.Core`.
 
 ## What It Does
 
-- Runs quietly from the system tray on Windows or the menu bar on macOS.
-- Watches for title-bar drag gestures using a global mouse hook.
+- Runs quietly from the system tray (Windows/Linux) or the menu bar (macOS).
+- Watches for title-bar drag gestures using platform input hooks, event taps, or X11 polling.
 - Qualifies a snap based on horizontal release velocity and horizontal-vs-vertical motion dominance.
 - Animates eligible windows into the left or right half of the active monitor work area.
-- Lets you hold `Ctrl` on Windows or `Option` on macOS at release to project the throw onto another monitor and snap there.
+- Lets you hold `Ctrl` on Windows/Linux or `Option` on macOS at release to project the throw onto another monitor and snap there.
 - Lets you tune gesture sensitivity, animation duration, launch-at-startup behavior, and optional diagnostics logging.
 
 ## Current Behavior
@@ -25,19 +25,22 @@ Pop currently targets a focused v1 workflow:
 
 ## Solution Layout
 
-- `src/Pop.Core`: Shared business logic and models such as gesture qualification, snap decisions, tile calculations, animation planning, settings persistence, and diagnostics formatting.
-- `src/Pop.Platform.Abstractions`: Platform-facing contracts for drag observation, window inspection, window movement, startup registration, and future shell integration seams.
+- `src/Pop.Core`: Shared business logic and models such as gesture qualification, snap decisions, tile calculations, animation planning, restore math, settings persistence, and diagnostics formatting.
+- `src/Pop.Platform.Abstractions`: Platform-facing contracts for drag observation, window inspection, window movement, and startup registration.
 - `src/Pop.App.Windows`: The Windows app plus Win32/WPF implementations of the platform abstractions.
 - `src/Pop.App.Mac`: The Native AOT macOS bridge and the native Swift/AppKit menu-bar app under `NativeHost`.
+- `src/Pop.App.Linux`: The Linux tray host (X11) plus optional Plasma Wayland/KWin integration.
+- `contracts/app-settings.contract.json`: Canonical `settings.json` property names and defaults shared across hosts.
+- `docs/ARCHITECTURE.md`: Layering, snap pipeline, Linux support boundaries, and testing expectations.
 - `tests/Pop.Tests`: Cross-platform xUnit tests for shared logic in `Pop.Core`.
 - `tests/Pop.Tests.Windows`: Windows-targeted xUnit tests for the current Windows adapters and update flow.
 
 ## Requirements
 
-- Windows 10/11 or macOS 13+ on Apple Silicon for end users
+- Windows 10/11, macOS 13+ on Apple Silicon, or Linux (X11, or Plasma Wayland via KWin)
 - .NET 8 SDK for building from source
 
-`Pop.Core`, `Pop.Platform.Abstractions`, and the macOS bridge target `net8.0`. The Windows app and test project target `net8.0-windows10.0.22621.0` and use WPF plus WinForms interop for the tray icon. The native macOS host is a Swift Package in `src/Pop.App.Mac/NativeHost`.
+`Pop.Core`, `Pop.Platform.Abstractions`, the macOS bridge, and the Linux app target `net8.0`. The Windows app and Windows test project target `net8.0-windows10.0.22621.0` and use WPF plus WinForms interop for the tray icon. The native macOS host is a Swift Package in `src/Pop.App.Mac/NativeHost`.
 
 ## Download & Install
 
@@ -102,10 +105,10 @@ On macOS the same logical JSON document lives in:
 ~/Library/Application Support/Pop/settings.json
 ```
 
-Available settings:
+Available settings (canonical names/defaults live in `contracts/app-settings.contract.json`):
 
 - `Enabled`: Turns momentum snapping on or off.
-- `LaunchAtStartup`: Adds or removes Pop from the current user's Windows startup registry key.
+- `LaunchAtStartup`: Registers Pop to start with the user session (Windows Run key, macOS LaunchAgent; Linux support depends on packaging).
 - `ThrowVelocityThresholdPxPerSec`: Minimum horizontal release velocity required to qualify.
 - `HorizontalDominanceRatio`: How strongly horizontal the gesture must be.
 - `GlideDurationMs`: Duration of the snap animation.
@@ -161,12 +164,14 @@ On macOS, launch-at-login is implemented with a per-user LaunchAgent plist under
 
 ## Development Notes
 
-- `src/Pop.App.Windows` is the current executable entry point.
-- `src/Pop.Core` contains the shared behavior worth preserving across Windows and macOS.
-- `src/Pop.Platform.Abstractions` marks the intended seam between shared logic and OS-specific integration code.
-- `src/Pop.App.Mac` now contains the Native AOT bridge and the Swift/AppKit host.
+- See `docs/ARCHITECTURE.md` for layering, the shared snap pipeline, and Linux support boundaries.
+- `src/Pop.Core` owns snap qualification, tile math, animation plans, and restore math used by every host.
+- Managed hosts (Windows/Linux) compose `QualifiedSnapPlanner` with platform window movers; macOS calls the same Core logic through the AOT bridge.
 - The app is tray-first by design, so there is no main window on launch.
-- Tests currently pass with `dotnet test tests/Pop.Tests/Pop.Tests.csproj`, `./scripts/build-mac-bridge.sh`, and `swift test --package-path src/Pop.App.Mac/NativeHost`.
+- PR CI runs on every push/PR via `.github/workflows/ci.yml` (shared .NET tests, Windows solution tests, macOS bridge + Swift tests).
+- Local tests: `dotnet test tests/Pop.Tests/Pop.Tests.csproj`, `./scripts/build-mac-bridge.sh`, and `swift test --package-path src/Pop.App.Mac/NativeHost`.
+- When changing settings keys or defaults, update `contracts/app-settings.contract.json`, C# `AppSettings`, Swift `AppSettings`, and the contract tests together.
 - Shared release metadata lives in `Directory.Build.props`.
 - A push to `main` that bumps `Version` in `Directory.Build.props` triggers the Windows and macOS release workflow in `.github/workflows/release.yml`; a successful main release then triggers `.github/workflows/release-linux.yml` to attach Linux AppImage and tarball assets.
 - For local release artifacts, run `.\scripts\package-release.ps1` on Windows, `./scripts/package-mac-release.sh` on macOS, or `./scripts/package-linux-release.sh` on Linux.
+- Branding sources live under `artifacts/branding/` (tracked). Build outputs under `artifacts/mac/` are gitignored.
