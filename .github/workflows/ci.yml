@@ -56,8 +56,16 @@ jobs:
       - name: Test shared .NET suite
         run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
 
+      - name: Make macOS scripts executable
+        run: chmod +x ./scripts/build-mac-bridge.sh
+
       - name: Build macOS bridge
         run: ./scripts/build-mac-bridge.sh
 
       - name: Test macOS Swift package
-        run: swift test --package-path src/Pop.App.Mac/NativeHost
+        shell: bash
+        run: |
+          # Match release.yml: the test host links @rpath/libPopMacBridge.dylib from the AOT bridge.
+          export DYLD_LIBRARY_PATH="$PWD/artifacts/mac/bridge${DYLD_LIBRARY_PATH:+:$DYLD_LIBRARY_PATH}"
+          export DYLD_FALLBACK_LIBRARY_PATH="$PWD/artifacts/mac/bridge${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
+          swift test --package-path src/Pop.App.Mac/NativeHost
