@@ -27,7 +27,7 @@ public sealed class WindowAnimator
 
         if (durationMs <= 16)
         {
-            return new AnimationPlan([new AnimationFrame(TimeSpan.Zero, targetBounds)], targetBounds, durationMs, 0);
+            return new AnimationPlan([new AnimationFrame(TimeSpan.Zero, targetBounds)], targetBounds, Math.Max(0, durationMs), 0);
         }
 
         var frameCount = Math.Max(2, (int)Math.Ceiling((durationMs / 1000d) * _targetFrameRate));

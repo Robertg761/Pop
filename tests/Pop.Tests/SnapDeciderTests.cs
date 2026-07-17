@@ -220,6 +220,25 @@ public sealed class SnapDeciderTests
         Assert.True(decision.ProjectedLandingPoint.Y < MainMonitor.Bounds.Bottom);
     }
 
+    [Fact]
+    public void Decide_WithCtrl_VerticalFlickWithNoAdjacentMonitor_IsRejected()
+    {
+        var decider = CreateDecider(MainMonitor);
+        var session = CreateSession(
+            MainMonitor,
+            MainMonitor,
+            new Rectangle(1000, 400, 800, 600),
+            true,
+            (0, 0, 0),
+            (20, 300, 100));
+
+        var decision = decider.Decide(session, TestSettings);
+
+        Assert.False(decision.IsQualified);
+        Assert.Equal(SnapTarget.None, decision.Target);
+        Assert.Equal(SnapRejectionReason.InsufficientHorizontalDominance, decision.RejectionReason);
+    }
+
     private static SnapDecider CreateDecider(params MonitorInfo[] monitors)
     {
         return new SnapDecider(new MonitorLookup(monitors).InspectMonitorAt);

@@ -129,6 +129,24 @@ public sealed class SnapDecider(Func<Point, MonitorInfo> monitorLookup) : ISnapD
         var projectedLandingPoint = ProjectLandingPoint(session, metrics);
         var releaseMonitor = session.CurrentMonitorInfo;
         var targetMonitor = ResolveCtrlTargetMonitor(releaseMonitor, projectedLandingPoint, metrics);
+
+        // When no distinct target monitor is found, a Ctrl throw collapses to a same-monitor
+        // left/right half-snap. That only makes sense for a horizontally dominant gesture: a
+        // fast *vertical* flick with no monitor above/below must not snap horizontally by the
+        // sign of its landing X.
+        var isCrossMonitor = targetMonitor != releaseMonitor;
+        var horizontallyDominant =
+            Math.Abs(metrics.HorizontalVelocityPxPerSec) >= Math.Abs(metrics.VerticalVelocityPxPerSec);
+        if (!isCrossMonitor && !horizontallyDominant)
+        {
+            return metrics with
+            {
+                TargetMonitorInfo = targetMonitor,
+                ProjectedLandingPoint = projectedLandingPoint,
+                RejectionReason = SnapRejectionReason.InsufficientHorizontalDominance
+            };
+        }
+
         var target = targetMonitor == releaseMonitor || dominantAxisVelocity >= settings.ThrowVelocityThresholdPxPerSec
             ? DetermineTargetFromLandingX(projectedLandingPoint.X, targetMonitor)
             : DetermineTargetForSlowCrossMonitorThrow(releaseMonitor, targetMonitor, projectedLandingPoint);
