@@ -1,4 +1,5 @@
 using System.Drawing;
+using System.Runtime.InteropServices;
 using Pop.Core.Models;
 using Pop.Core.Services;
 using Pop.Platform.Abstractions.Windowing;
@@ -11,8 +12,11 @@ public sealed class X11WindowInspector : IWindowInspector
     private static readonly TimeSpan MonitorInfoCacheDuration = TimeSpan.FromMilliseconds(250);
     private readonly X11DisplayConnection _connection;
     private readonly WindowEligibilityEvaluator _evaluator;
-    private MonitorInfo _cachedMonitorInfo;
-    private DateTimeOffset _cachedMonitorInfoValidUntil;
+    private IReadOnlyList<Rectangle> _cachedScreens = Array.Empty<Rectangle>();
+    private Rectangle _cachedDisplayBounds;
+    private Rectangle _cachedGlobalWorkArea;
+    private DateTimeOffset _cachedLayoutValidUntil;
+    private bool _xineramaUnavailable;
 
     public X11WindowInspector(X11DisplayConnection connection, WindowEligibilityEvaluator evaluator)
     {
@@ -46,38 +50,143 @@ public sealed class X11WindowInspector : IWindowInspector
 
     public MonitorInfo InspectMonitorAt(Point screenPoint)
     {
-        _ = screenPoint;
-        var now = DateTimeOffset.UtcNow;
-        if (_cachedMonitorInfo != MonitorInfo.Empty && now < _cachedMonitorInfoValidUntil)
+        RefreshLayoutIfStale(DateTimeOffset.UtcNow);
+
+        // Use per-monitor geometry only when Xinerama reports more than one head, so single-head
+        // setups keep the proven whole-display path untouched.
+        if (_cachedScreens.Count > 1)
         {
-            return _cachedMonitorInfo;
+            var monitorBounds = SelectMonitor(_cachedScreens, screenPoint);
+            return new MonitorInfo(monitorBounds, IntersectWorkArea(_cachedGlobalWorkArea, monitorBounds));
         }
 
-        var displayBounds = new Rectangle(
-            0,
-            0,
-            GetDisplayWidth(),
-            GetDisplayHeight());
+        return new MonitorInfo(_cachedDisplayBounds, _cachedGlobalWorkArea);
+    }
 
+    private void RefreshLayoutIfStale(DateTimeOffset now)
+    {
+        if (now < _cachedLayoutValidUntil && _cachedDisplayBounds != Rectangle.Empty)
+        {
+            return;
+        }
+
+        _cachedDisplayBounds = new Rectangle(0, 0, GetDisplayWidth(), GetDisplayHeight());
+        _cachedGlobalWorkArea = ReadGlobalWorkArea(_cachedDisplayBounds);
+        _cachedScreens = QueryXineramaScreens();
+        _cachedLayoutValidUntil = now + MonitorInfoCacheDuration;
+    }
+
+    private Rectangle ReadGlobalWorkArea(Rectangle displayBounds)
+    {
         var workAreaValues = X11PropertyReader.ReadLongArray(_connection, _connection.RootWindow, _connection.Atoms.NetWorkarea);
-        MonitorInfo monitorInfo;
         if (workAreaValues.Count >= 4)
         {
-            var workArea = new Rectangle(
+            return new Rectangle(
                 checked((int)workAreaValues[0]),
                 checked((int)workAreaValues[1]),
                 checked((int)workAreaValues[2]),
                 checked((int)workAreaValues[3]));
-            monitorInfo = new MonitorInfo(displayBounds, workArea);
-        }
-        else
-        {
-            monitorInfo = new MonitorInfo(displayBounds, displayBounds);
         }
 
-        _cachedMonitorInfo = monitorInfo;
-        _cachedMonitorInfoValidUntil = now + MonitorInfoCacheDuration;
-        return monitorInfo;
+        return displayBounds;
+    }
+
+    private IReadOnlyList<Rectangle> QueryXineramaScreens()
+    {
+        if (_xineramaUnavailable)
+        {
+            return Array.Empty<Rectangle>();
+        }
+
+        try
+        {
+            lock (_connection.SyncRoot)
+            {
+                if (_connection.IsDisposed || X11Native.XineramaIsActive(_connection.Display) == 0)
+                {
+                    return Array.Empty<Rectangle>();
+                }
+
+                var pointer = X11Native.XineramaQueryScreens(_connection.Display, out var count);
+                if (pointer == IntPtr.Zero || count <= 0)
+                {
+                    if (pointer != IntPtr.Zero)
+                    {
+                        X11Native.XFree(pointer);
+                    }
+
+                    return Array.Empty<Rectangle>();
+                }
+
+                try
+                {
+                    var size = Marshal.SizeOf<X11Native.XineramaScreenInfo>();
+                    var screens = new List<Rectangle>(count);
+                    for (var index = 0; index < count; index++)
+                    {
+                        var info = Marshal.PtrToStructure<X11Native.XineramaScreenInfo>(pointer + (index * size));
+                        if (info.Width > 0 && info.Height > 0)
+                        {
+                            screens.Add(new Rectangle(info.XOrg, info.YOrg, info.Width, info.Height));
+                        }
+                    }
+
+                    return screens;
+                }
+                finally
+                {
+                    X11Native.XFree(pointer);
+                }
+            }
+        }
+        catch (Exception exception) when (exception is DllNotFoundException or EntryPointNotFoundException)
+        {
+            // libXinerama is not installed; fall back to whole-display geometry for the session.
+            _xineramaUnavailable = true;
+            return Array.Empty<Rectangle>();
+        }
+    }
+
+    private static Rectangle SelectMonitor(IReadOnlyList<Rectangle> screens, Point point)
+    {
+        foreach (var screen in screens)
+        {
+            if (screen.Contains(point))
+            {
+                return screen;
+            }
+        }
+
+        var best = screens[0];
+        var bestDistance = long.MaxValue;
+        foreach (var screen in screens)
+        {
+            var distance = DistanceSquared(point, screen);
+            if (distance < bestDistance)
+            {
+                bestDistance = distance;
+                best = screen;
+            }
+        }
+
+        return best;
+    }
+
+    private static long DistanceSquared(Point point, Rectangle rectangle)
+    {
+        long dx = point.X < rectangle.Left ? rectangle.Left - point.X
+            : point.X > rectangle.Right ? point.X - rectangle.Right
+            : 0;
+        long dy = point.Y < rectangle.Top ? rectangle.Top - point.Y
+            : point.Y > rectangle.Bottom ? point.Y - rectangle.Bottom
+            : 0;
+        return (dx * dx) + (dy * dy);
+    }
+
+    private static Rectangle IntersectWorkArea(Rectangle globalWorkArea, Rectangle monitorBounds)
+    {
+        var intersection = Rectangle.Intersect(globalWorkArea, monitorBounds);
+        return intersection.Width > 0 && intersection.Height > 0 ? intersection : monitorBounds;
     }
 
     public WindowStateSnapshot InspectWindowState(IntPtr windowHandle)

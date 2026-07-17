@@ -118,6 +118,30 @@ internal static partial class X11Native
     [DllImport("libX11.so.6")]
     public static extern int XFree(IntPtr data);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate int XErrorHandler(IntPtr display, IntPtr errorEvent);
+
+    [DllImport("libX11.so.6")]
+    public static extern XErrorHandler XSetErrorHandler(XErrorHandler handler);
+
+    // Xinerama is used to enumerate individual monitors on a multi-head X11 setup. It lives in a
+    // separate library that may be absent; callers must handle DllNotFoundException.
+    [DllImport("libXinerama.so.1")]
+    public static extern int XineramaIsActive(IntPtr display);
+
+    [DllImport("libXinerama.so.1")]
+    public static extern IntPtr XineramaQueryScreens(IntPtr display, out int number);
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct XineramaScreenInfo
+    {
+        public int ScreenNumber;
+        public short XOrg;
+        public short YOrg;
+        public short Width;
+        public short Height;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     public struct XWindowAttributes
     {

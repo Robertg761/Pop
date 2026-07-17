@@ -76,6 +76,12 @@ public sealed class X11WindowMover : IWindowMover
 
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                // The display was closed during shutdown while this move was in flight.
+                return;
+            }
+
             X11Native.XSendEvent(
                 _connection.Display,
                 _connection.RootWindow,

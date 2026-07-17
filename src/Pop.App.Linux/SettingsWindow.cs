@@ -10,6 +10,7 @@ namespace Pop.App.Linux;
 public sealed class SettingsWindow : Window
 {
     private readonly Func<AppSettings, Task<bool>> _saveSettingsAsync;
+    private AppSettings _currentSettings = AppSettings.Default;
     private readonly CheckBox _enabledCheckBox = new();
     private readonly CheckBox _diagnosticsCheckBox = new();
     private readonly TextBox _velocityTextBox = CreateNumberTextBox();
@@ -233,6 +234,7 @@ public sealed class SettingsWindow : Window
 
     private void Apply(AppSettings settings)
     {
+        _currentSettings = settings;
         SetValidationMessage(string.Empty);
         _enabledCheckBox.Content = "Enable snapping";
         _enabledCheckBox.IsChecked = settings.Enabled;
@@ -265,6 +267,12 @@ public sealed class SettingsWindow : Window
                 Hide();
             }
         }
+        catch (Exception exception)
+        {
+            // async void: an unhandled exception here (e.g. a failed KWin reload or an unwritable
+            // config dir) would escape onto the dispatcher and terminate the app.
+            SetValidationMessage($"Pop couldn't save settings: {exception.Message}");
+        }
         finally
         {
             if (clickedButton is not null)
@@ -291,7 +299,9 @@ public sealed class SettingsWindow : Window
         }
 
         validationMessage = string.Empty;
-        settings = new AppSettings
+        // Start from the current settings so contract fields not exposed in this UI (e.g.
+        // LaunchAtStartup) are preserved rather than reset to their defaults on every save.
+        settings = _currentSettings with
         {
             Enabled = _enabledCheckBox.IsChecked == true,
             EnableDiagnostics = _diagnosticsCheckBox.IsChecked == true,

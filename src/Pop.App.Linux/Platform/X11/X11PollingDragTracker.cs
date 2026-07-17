@@ -75,24 +75,40 @@ public sealed class X11PollingDragTracker : IDragTracker
     {
         while (!cancellationToken.IsCancellationRequested)
         {
-            var snapshot = QueryPointer();
-            var isLeftButtonDown = (snapshot.ButtonMask & X11Native.Button1Mask) != 0;
-            var timestamp = DateTimeOffset.UtcNow;
+            // Fail soft on the hot path: an exception from a window inspection or a handler must
+            // not fault the polling task, which would silently stop all snapping for the session.
+            try
+            {
+                var snapshot = QueryPointer();
+                var isLeftButtonDown = (snapshot.ButtonMask & X11Native.Button1Mask) != 0;
+                var timestamp = DateTimeOffset.UtcNow;
 
-            if (isLeftButtonDown && !_wasLeftButtonDown)
-            {
-                HandleLeftButtonDown(snapshot.Position, timestamp);
+                if (isLeftButtonDown && !_wasLeftButtonDown)
+                {
+                    HandleLeftButtonDown(snapshot.Position, timestamp);
+                }
+                else if (isLeftButtonDown)
+                {
+                    HandleMouseMove(snapshot.Position, timestamp);
+                }
+                else if (_wasLeftButtonDown)
+                {
+                    HandleLeftButtonUp(snapshot.Position, timestamp, snapshot.ButtonMask);
+                }
+
+                _wasLeftButtonDown = isLeftButtonDown;
             }
-            else if (isLeftButtonDown)
+            catch (OperationCanceledException)
             {
-                HandleMouseMove(snapshot.Position, timestamp);
+                return;
             }
-            else if (_wasLeftButtonDown)
+            catch (Exception exception)
             {
-                HandleLeftButtonUp(snapshot.Position, timestamp, snapshot.ButtonMask);
+                _activeSession = null;
+                _wasLeftButtonDown = false;
+                Console.Error.WriteLine($"Pop drag polling recovered from an error: {exception.Message}");
             }
 
-            _wasLeftButtonDown = isLeftButtonDown;
             await Task.Delay(PollInterval, cancellationToken);
         }
     }
