@@ -38,6 +38,13 @@ private final class GlobalDragTracker {
 
         let callback: CGEventTapCallBack = { _, type, event, userInfo in
             let tracker = Unmanaged<GlobalDragTracker>.fromOpaque(userInfo!).takeUnretainedValue()
+            // The WindowServer disables a tap whose callback is slow (a hung target app during
+            // AX inspection) or when the user takes over input. Re-enable it instead of going
+            // permanently deaf until the next manual toggle.
+            if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
+                tracker.reenableTap()
+                return Unmanaged.passUnretained(event)
+            }
             tracker.handle(type: type, event: event)
             return Unmanaged.passUnretained(event)
         }
@@ -57,6 +64,12 @@ private final class GlobalDragTracker {
         self.runLoopSource = source
         CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+    }
+
+    fileprivate func reenableTap() {
+        if let eventTap {
+            CGEvent.tapEnable(tap: eventTap, enable: true)
+        }
     }
 
     func stop() {
@@ -190,6 +203,7 @@ final class PopRuntimeController {
     private let bridgeClient = PopMacBridgeClient()
     private lazy var diagnosticsLogger = DiagnosticsLogger(directoryURL: settingsStore.directoryURL, bridgeClient: bridgeClient)
     private var snapRestoreStates: [CFHashCode: SnapRestoreState] = [:]
+    private var permissionMonitor: Timer?
 
     private(set) var settings = AppSettings.default
     private(set) var permissionState: AccessibilityPermissionState = .needsApproval
@@ -230,6 +244,34 @@ final class PopRuntimeController {
         }
         syncLaunchAgent()
         refreshTracking(prompt: false)
+        startPermissionMonitor()
+        onStateChanged?()
+    }
+
+    private func startPermissionMonitor() {
+        permissionMonitor?.invalidate()
+        // Accessibility can be revoked in System Settings while Pop runs, which silently kills the
+        // event tap. Poll so the menu-bar state and tap recover without a manual toggle.
+        permissionMonitor = Timer.scheduledTimer(withTimeInterval: 4.0, repeats: true) { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.reconcilePermissionState()
+            }
+        }
+    }
+
+    private func reconcilePermissionState() {
+        let refreshed = permissionCoordinator.refresh(prompt: false)
+        guard refreshed != permissionState else {
+            return
+        }
+
+        permissionState = refreshed
+        if settings.enabled && refreshed == .granted {
+            dragTracker.start()
+        } else {
+            dragTracker.stop()
+        }
+
         onStateChanged?()
     }
 

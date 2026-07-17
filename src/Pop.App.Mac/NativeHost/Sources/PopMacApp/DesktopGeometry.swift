@@ -32,35 +32,52 @@ struct DesktopScreen {
 }
 
 final class ScreenCoordinator {
-    private var desktopMaxY: CGFloat {
-        NSScreen.screens.map { $0.frame.maxY }.max() ?? 0
+    // Pop.Core works in a single top-left-origin global space (origin at the primary display's
+    // top-left, +Y downward). Two of macOS's coordinate sources already use that space and one
+    // does not:
+    //   - CGEvent.location and the Accessibility API (kAXPosition/kAXSize) are top-left global.
+    //   - NSScreen.frame/.visibleFrame are Cocoa: bottom-left origin, +Y upward.
+    // Only NSScreen frames are flipped, and the flip pivots on the primary screen's height —
+    // NSScreen.screens[0] has a Cocoa origin of (0,0), so its height is the top of the space.
+    private var primaryScreenHeight: CGFloat {
+        NSScreen.screens.first?.frame.height ?? 0
     }
 
+    /// A CGEvent location is already in top-left global space; round it into integer space.
     func pointInTopLeftSpace(from eventLocation: CGPoint) -> DesktopPoint {
         DesktopPoint(
             x: Int(eventLocation.x.rounded()),
-            y: Int((desktopMaxY - eventLocation.y).rounded()))
+            y: Int(eventLocation.y.rounded()))
     }
 
-    func rectInTopLeftSpace(from frame: CGRect) -> DesktopRect {
+    /// An AX window rect (kAXPosition/kAXSize) is already top-left; round it, do not flip.
+    func windowRect(fromAXRect rect: CGRect) -> DesktopRect {
+        DesktopRect(
+            x: Int(rect.origin.x.rounded()),
+            y: Int(rect.origin.y.rounded()),
+            width: Int(rect.width.rounded()),
+            height: Int(rect.height.rounded()))
+    }
+
+    /// The top-left corner of a tile maps straight through to an AX position (also top-left).
+    func axPoint(fromTopLeftRect rect: DesktopRect) -> CGPoint {
+        CGPoint(x: CGFloat(rect.x), y: CGFloat(rect.y))
+    }
+
+    /// An NSScreen (Cocoa, bottom-left) frame flipped into top-left global space.
+    private func screenRect(fromCocoaFrame frame: CGRect) -> DesktopRect {
         DesktopRect(
             x: Int(frame.origin.x.rounded()),
-            y: Int((desktopMaxY - frame.maxY).rounded()),
+            y: Int((primaryScreenHeight - frame.maxY).rounded()),
             width: Int(frame.width.rounded()),
             height: Int(frame.height.rounded()))
-    }
-
-    func cgPoint(fromTopLeftRect rect: DesktopRect) -> CGPoint {
-        CGPoint(
-            x: CGFloat(rect.x),
-            y: desktopMaxY - CGFloat(rect.y + rect.height))
     }
 
     func screens() -> [DesktopScreen] {
         NSScreen.screens.map {
             DesktopScreen(
-                frame: rectInTopLeftSpace(from: $0.frame),
-                visibleFrame: rectInTopLeftSpace(from: $0.visibleFrame))
+                frame: screenRect(fromCocoaFrame: $0.frame),
+                visibleFrame: screenRect(fromCocoaFrame: $0.visibleFrame))
         }
     }
 

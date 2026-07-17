@@ -13,20 +13,37 @@ public static unsafe class MacBridgeExports
         PopDragContextDto context,
         PopAppSettingsDto settings)
     {
-        var sampleSpan = samples is null || sampleCount <= 0
-            ? ReadOnlySpan<PopDragSampleDto>.Empty
-            : new ReadOnlySpan<PopDragSampleDto>(samples, sampleCount);
-        var monitorSpan = monitors is null || monitorCount <= 0
-            ? ReadOnlySpan<PopMonitorInfoDto>.Empty
-            : new ReadOnlySpan<PopMonitorInfoDto>(monitors, monitorCount);
+        try
+        {
+            var sampleSpan = samples is null || sampleCount <= 0
+                ? ReadOnlySpan<PopDragSampleDto>.Empty
+                : new ReadOnlySpan<PopDragSampleDto>(samples, sampleCount);
+            var monitorSpan = monitors is null || monitorCount <= 0
+                ? ReadOnlySpan<PopMonitorInfoDto>.Empty
+                : new ReadOnlySpan<PopMonitorInfoDto>(monitors, monitorCount);
 
-        return MacBridgeRuntime.EvaluateDragGestureManaged(sampleSpan, monitorSpan, context, settings);
+            return MacBridgeRuntime.EvaluateDragGestureManaged(sampleSpan, monitorSpan, context, settings);
+        }
+        catch
+        {
+            // A managed exception escaping an [UnmanagedCallersOnly] export fail-fasts the whole
+            // menu-bar process under NativeAOT. Return an unqualified decision instead so a
+            // malformed sample can never crash a drag.
+            return default;
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_GetTileBounds")]
     public static PopRectDto GetTileBounds(int target, PopMonitorInfoDto monitor)
     {
-        return MacBridgeRuntime.GetTileBoundsManaged(target, monitor);
+        try
+        {
+            return MacBridgeRuntime.GetTileBoundsManaged(target, monitor);
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_CreateAnimationPlan")]
@@ -36,13 +53,28 @@ public static unsafe class MacBridgeExports
         double releaseVelocityX,
         int durationMs)
     {
-        return MacBridgeRuntime.CreateAnimationPlanManaged(startBounds, targetBounds, releaseVelocityX, durationMs);
+        try
+        {
+            return MacBridgeRuntime.CreateAnimationPlanManaged(startBounds, targetBounds, releaseVelocityX, durationMs);
+        }
+        catch
+        {
+            // Fall back to a frameless plan that snaps straight to the target, rather than
+            // fail-fasting the process.
+            return new PopAnimationPlanDto(IntPtr.Zero, 0, targetBounds, Math.Max(0, durationMs), 0);
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_FreeAnimationPlan")]
     public static void FreeAnimationPlan(PopAnimationPlanDto plan)
     {
-        MacBridgeRuntime.FreeAnimationPlanManaged(plan);
+        try
+        {
+            MacBridgeRuntime.FreeAnimationPlanManaged(plan);
+        }
+        catch
+        {
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_CreateRestoreBounds")]
@@ -53,7 +85,14 @@ public static unsafe class MacBridgeExports
         PopPointDto dragPoint,
         PopRectDto workArea)
     {
-        return MacBridgeRuntime.CreateRestoreBoundsManaged(currentBounds, snappedBounds, previousBounds, dragPoint, workArea);
+        try
+        {
+            return MacBridgeRuntime.CreateRestoreBoundsManaged(currentBounds, snappedBounds, previousBounds, dragPoint, workArea);
+        }
+        catch
+        {
+            return default;
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_FormatDiagnosticEvent")]
@@ -64,29 +103,37 @@ public static unsafe class MacBridgeExports
         PopDiagnosticFieldDto* fields,
         int fieldCount)
     {
-        var managedFields = new Dictionary<string, string?>();
-        if (fields is not null && fieldCount > 0)
+        try
         {
-            var fieldSpan = new ReadOnlySpan<PopDiagnosticFieldDto>(fields, fieldCount);
-            foreach (var field in fieldSpan)
+            var managedFields = new Dictionary<string, string?>();
+            if (fields is not null && fieldCount > 0)
             {
-                var key = Marshal.PtrToStringUTF8(field.Key);
-                if (string.IsNullOrWhiteSpace(key))
+                var fieldSpan = new ReadOnlySpan<PopDiagnosticFieldDto>(fields, fieldCount);
+                foreach (var field in fieldSpan)
                 {
-                    continue;
+                    var key = Marshal.PtrToStringUTF8(field.Key);
+                    if (string.IsNullOrWhiteSpace(key))
+                    {
+                        continue;
+                    }
+
+                    managedFields[key] = field.Value == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(field.Value);
                 }
-
-                managedFields[key] = field.Value == IntPtr.Zero ? null : Marshal.PtrToStringUTF8(field.Value);
             }
+
+            var json = MacBridgeRuntime.FormatDiagnosticEventManaged(
+                timestampUnixMilliseconds,
+                Marshal.PtrToStringUTF8(category) ?? string.Empty,
+                Marshal.PtrToStringUTF8(message) ?? string.Empty,
+                managedFields);
+
+            return Marshal.StringToCoTaskMemUTF8(json);
         }
-
-        var json = MacBridgeRuntime.FormatDiagnosticEventManaged(
-            timestampUnixMilliseconds,
-            Marshal.PtrToStringUTF8(category) ?? string.Empty,
-            Marshal.PtrToStringUTF8(message) ?? string.Empty,
-            managedFields);
-
-        return Marshal.StringToCoTaskMemUTF8(json);
+        catch
+        {
+            // The Swift caller treats a null pointer as an empty diagnostic line.
+            return IntPtr.Zero;
+        }
     }
 
     [UnmanagedCallersOnly(EntryPoint = "PopMacBridge_FreeUtf8String")]

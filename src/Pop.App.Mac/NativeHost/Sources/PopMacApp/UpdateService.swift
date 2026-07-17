@@ -328,19 +328,43 @@ extension UpdateService: URLSessionDownloadDelegate {
     }
 
     nonisolated func urlSession(_ session: URLSession, downloadTask: URLSessionDownloadTask, didFinishDownloadingTo location: URL) {
+        // URLSession deletes the temp file at `location` as soon as this delegate method returns,
+        // so it must be moved to a stable path synchronously here — before the main-actor hop
+        // that resumes the continuation and eventually calls moveItem(fromArchiveAt:).
+        let stableURL = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PopUpdate-\(downloadTask.taskIdentifier)-\(location.lastPathComponent)")
+        let movedURL: URL?
+        do {
+            try? FileManager.default.removeItem(at: stableURL)
+            try FileManager.default.moveItem(at: location, to: stableURL)
+            movedURL = stableURL
+        } catch {
+            movedURL = nil
+        }
+
         Task { @MainActor [weak self] in
             guard let self, self.activeDownloadTask?.taskIdentifier == downloadTask.taskIdentifier else {
+                if let movedURL {
+                    try? FileManager.default.removeItem(at: movedURL)
+                }
                 return
             }
 
             self.activeDownloadTask = nil
             self.activeDownloadVersion = nil
             guard let continuation = self.downloadContinuation else {
+                if let movedURL {
+                    try? FileManager.default.removeItem(at: movedURL)
+                }
                 return
             }
 
             self.downloadContinuation = nil
-            continuation.resume(returning: location)
+            if let movedURL {
+                continuation.resume(returning: movedURL)
+            } else {
+                continuation.resume(throwing: UpdateInstallerError.downloadFailed)
+            }
         }
     }
 
@@ -421,6 +445,7 @@ enum UpdateInstallerError: LocalizedError {
     case missingPreparedApp
     case backupFailed
     case sessionUnavailable
+    case downloadFailed
     case processFailed(command: String, output: String)
 
     var errorDescription: String? {
@@ -437,6 +462,8 @@ enum UpdateInstallerError: LocalizedError {
             return "Pop couldn't restore the previous app after the update copy failed."
         case .sessionUnavailable:
             return "The download session is unavailable."
+        case .downloadFailed:
+            return "The downloaded update could not be saved."
         case let .processFailed(command, output):
             return output.isEmpty ? "\(command) failed." : "\(command) failed: \(output)"
         }
