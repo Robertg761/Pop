@@ -6,6 +6,9 @@ on:
       - main
   pull_request:
 
+permissions:
+  contents: read
+
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
@@ -25,6 +28,9 @@ jobs:
 
       - name: Test shared suite
         run: dotnet test tests/Pop.Tests/Pop.Tests.csproj --configuration Release
+
+      - name: Build Linux host
+        run: dotnet build src/Pop.App.Linux/Pop.App.Linux.csproj --configuration Release
 
   test-dotnet-windows:
     name: .NET Windows tests

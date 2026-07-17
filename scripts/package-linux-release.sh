@@ -73,11 +73,12 @@ mkdir -p "$log_dir"
 echo "[$(date --iso-8601=seconds)] Starting Pop from AppImage." >> "$log_path"
 notify "Pop is running. Launch output is logged to $log_path."
 
-if "$POP_BIN" "$@" >> "$log_path" 2>&1; then
+"$POP_BIN" "$@" >> "$log_path" 2>&1
+exit_code=$?
+if [[ $exit_code -eq 0 ]]; then
   exit 0
 fi
 
-exit_code=$?
 notify "Pop could not start. See $log_path for details."
 exit "$exit_code"
 EOF
@@ -96,9 +97,22 @@ EOF
 cp "$APPDIR/pop.desktop" "$APPDIR/usr/share/applications/pop.desktop"
 
 if [[ ! -x "$APPIMAGETOOL" ]]; then
+  # Pin to an immutable release tag rather than the moving 'continuous' tag so the tool that runs
+  # inside this write-token job cannot be swapped underneath us. Set APPIMAGETOOL_SHA256 to the
+  # expected checksum to enforce integrity (recommended); if unset the build only warns.
+  APPIMAGETOOL_TAG="${APPIMAGETOOL_TAG:-13}"
   curl --fail --location --retry 3 --retry-delay 2 \
-    "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
+    "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/appimagetool-x86_64.AppImage" \
     --output "$APPIMAGETOOL"
+
+  if [[ -n "${APPIMAGETOOL_SHA256:-}" ]]; then
+    echo "${APPIMAGETOOL_SHA256}  ${APPIMAGETOOL}" | sha256sum --check --status \
+      || { echo "appimagetool checksum verification failed." >&2; exit 1; }
+  else
+    echo "WARNING: APPIMAGETOOL_SHA256 is not set; skipping appimagetool integrity check." >&2
+    echo "Downloaded appimagetool sha256: $(sha256sum "$APPIMAGETOOL" | cut -d' ' -f1)" >&2
+  fi
+
   chmod +x "$APPIMAGETOOL"
 fi
 
