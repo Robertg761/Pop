@@ -17,7 +17,7 @@ public sealed class Win32WindowMover : IWindowMover
 
         if (plan.Frames.Count == 0)
         {
-            NativeMethods.MoveWindow(windowHandle, plan.FinalBounds.X, plan.FinalBounds.Y, plan.FinalBounds.Width, plan.FinalBounds.Height, true);
+            MoveWindowAsyncSafe(windowHandle, plan.FinalBounds);
             return;
         }
 
@@ -39,12 +39,28 @@ public sealed class Win32WindowMover : IWindowMover
             }
 
             previousBounds = frame.Bounds;
-            NativeMethods.MoveWindow(windowHandle, frame.Bounds.X, frame.Bounds.Y, frame.Bounds.Width, frame.Bounds.Height, true);
+            MoveWindowAsyncSafe(windowHandle, frame.Bounds);
         }
 
         if (!previousBounds.HasValue || previousBounds.Value != plan.FinalBounds)
         {
-            NativeMethods.MoveWindow(windowHandle, plan.FinalBounds.X, plan.FinalBounds.Y, plan.FinalBounds.Width, plan.FinalBounds.Height, true);
+            MoveWindowAsyncSafe(windowHandle, plan.FinalBounds);
         }
+    }
+
+    // Reposition via SetWindowPos with SWP_ASYNCWINDOWPOS so the call never blocks on the
+    // target window's message loop. The original MoveWindow sent WM_WINDOWPOSCHANGING
+    // synchronously, which could freeze the caller — including the low-level mouse hook thread
+    // during an in-drag restore — if the target application was hung.
+    private static void MoveWindowAsyncSafe(IntPtr windowHandle, Rectangle bounds)
+    {
+        NativeMethods.SetWindowPos(
+            windowHandle,
+            IntPtr.Zero,
+            bounds.X,
+            bounds.Y,
+            bounds.Width,
+            bounds.Height,
+            NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate | NativeMethods.SwpAsyncWindowPos);
     }
 }

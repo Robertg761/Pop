@@ -111,7 +111,7 @@ public sealed class PopHost : IDisposable
     public async Task InitializeAsync()
     {
         _settings = await _settingsStore.LoadAsync(_disposeCancellation.Token);
-        _startupRegistration.SetLaunchAtStartup(_settings.LaunchAtStartup);
+        _startupRegistration.TrySetLaunchAtStartup(_settings.LaunchAtStartup);
         UpdateMenuState();
         await _updateService.StartAsync(_disposeCancellation.Token);
         _dragTracker.Start();
@@ -324,7 +324,14 @@ public sealed class PopHost : IDisposable
 
     private async Task CheckForUpdatesAsync()
     {
-        await _updateService.CheckNowAsync(_disposeCancellation.Token);
+        try
+        {
+            await _updateService.CheckNowAsync(_disposeCancellation.Token);
+        }
+        catch (Exception exception) when (exception is OperationCanceledException or ObjectDisposedException)
+        {
+            // The service was cancelled/disposed while a manual check ran (e.g. app shutting down).
+        }
     }
 
     private async Task<bool> ApplySettingsAsync(AppSettings settings)
@@ -334,9 +341,9 @@ public sealed class PopHost : IDisposable
 
         try
         {
-            if (launchAtStartupChanged)
+            if (launchAtStartupChanged && !_startupRegistration.TrySetLaunchAtStartup(settings.LaunchAtStartup))
             {
-                _startupRegistration.SetLaunchAtStartup(settings.LaunchAtStartup);
+                throw new InvalidOperationException("Couldn't update the launch-at-startup registration.");
             }
 
             await _settingsStore.SaveAsync(settings, _disposeCancellation.Token);
@@ -365,13 +372,7 @@ public sealed class PopHost : IDisposable
 
     private void TryRestoreLaunchAtStartup(bool enabled)
     {
-        try
-        {
-            _startupRegistration.SetLaunchAtStartup(enabled);
-        }
-        catch
-        {
-        }
+        _startupRegistration.TrySetLaunchAtStartup(enabled);
     }
 
     private static void ShowSettingsSaveError(Exception exception)
@@ -406,13 +407,28 @@ public sealed class PopHost : IDisposable
 
     private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
     {
-        if (Application.Current.Dispatcher.CheckAccess())
+        // The background update loop can raise this after Run() returns, when Application.Current
+        // is already null or the dispatcher is shutting down.
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher is null)
+        {
+            return;
+        }
+
+        if (dispatcher.CheckAccess())
         {
             ApplyUpdateState(e.State);
             return;
         }
 
-        Application.Current.Dispatcher.Invoke(() => ApplyUpdateState(e.State));
+        try
+        {
+            dispatcher.Invoke(() => ApplyUpdateState(e.State));
+        }
+        catch (Exception exception) when (exception is System.Threading.Tasks.TaskCanceledException or OperationCanceledException)
+        {
+            // Dispatcher is shutting down; drop the stale update-state notification.
+        }
     }
 
     private void ApplyUpdateState(UpdateState state)

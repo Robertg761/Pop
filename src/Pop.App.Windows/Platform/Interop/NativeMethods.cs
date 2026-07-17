@@ -80,8 +80,18 @@ internal static class NativeMethods
         public int TokenIsElevated;
     }
 
-    [DllImport("user32.dll")]
+    // SetWindowPos flags used to move foreign windows without blocking on their (possibly
+    // hung) message loop. SWP_ASYNCWINDOWPOS posts the request instead of sending it.
+    public const uint SwpNoZOrder = 0x0004;
+    public const uint SwpNoActivate = 0x0010;
+    public const uint SwpAsyncWindowPos = 0x4000;
+
+    [DllImport("user32.dll", SetLastError = true)]
     public static extern IntPtr SetWindowsHookEx(int idHook, LowLevelMouseProc lpfn, IntPtr hMod, uint dwThreadId);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]

@@ -14,6 +14,7 @@ internal sealed class UpdateService : IUpdateService
 
     private Task? _backgroundTask;
     private bool _started;
+    private volatile bool _disposed;
 
     public UpdateService(
         IUpdateClient? updateClient = null,
@@ -69,7 +70,25 @@ internal sealed class UpdateService : IUpdateService
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _disposeCancellation.Cancel();
+
+        // Let the background loop (and any in-flight check it is running) observe cancellation
+        // and unwind before disposing the primitives it uses, so we don't race it into an
+        // ObjectDisposedException.
+        try
+        {
+            _backgroundTask?.Wait(TimeSpan.FromSeconds(2));
+        }
+        catch (AggregateException)
+        {
+        }
+
         _checkGate.Dispose();
         _disposeCancellation.Dispose();
     }
@@ -93,6 +112,26 @@ internal sealed class UpdateService : IUpdateService
     }
 
     private async Task CheckForUpdatesInternalAsync(CancellationToken cancellationToken)
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        try
+        {
+            await CheckForUpdatesCoreAsync(cancellationToken);
+        }
+        catch (ObjectDisposedException)
+        {
+            // The service was disposed mid-check (e.g. a manual check racing app shutdown).
+        }
+        catch (OperationCanceledException) when (_disposeCancellation.IsCancellationRequested)
+        {
+        }
+    }
+
+    private async Task CheckForUpdatesCoreAsync(CancellationToken cancellationToken)
     {
         using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCancellation.Token);
         var effectiveCancellation = linkedCancellation.Token;
