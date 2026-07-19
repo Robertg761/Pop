@@ -45,6 +45,6 @@ public sealed class DiagnosticsLogFormatterTests
         using var document = JsonDocument.Parse(json);
 
         Assert.True(document.RootElement.TryGetProperty("fields", out var fields));
-        Assert.Equal(1, fields.EnumerateObject().Count());
+        Assert.Single(fields.EnumerateObject());
     }
 }

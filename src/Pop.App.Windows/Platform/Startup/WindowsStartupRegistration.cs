@@ -1,3 +1,4 @@
+using System.IO;
 using Microsoft.Win32;
 using Pop.Platform.Abstractions.Startup;
 
