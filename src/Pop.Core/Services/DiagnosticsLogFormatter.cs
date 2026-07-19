@@ -9,11 +9,18 @@ public static class DiagnosticsLogFormatter
 {
     public static string Format(DiagnosticEvent diagnosticEvent)
     {
-        var safeFields = diagnosticEvent.Fields?
-            .Take(16)
-            .ToDictionary(
-                pair => Truncate(pair.Key, 48),
-                pair => pair.Value is null ? null : Truncate(pair.Value, 180));
+        // Build the field map defensively: two distinct keys can collide once truncated to
+        // 48 chars, and ToDictionary would throw on the duplicate — a crash on the drag hot
+        // path. Last-writer-wins keeps formatting total.
+        Dictionary<string, string?>? safeFields = null;
+        if (diagnosticEvent.Fields is { } fields)
+        {
+            safeFields = new Dictionary<string, string?>(StringComparer.Ordinal);
+            foreach (var pair in fields.Take(16))
+            {
+                safeFields[Truncate(pair.Key, 48)] = pair.Value is null ? null : Truncate(pair.Value, 180);
+            }
+        }
 
         var payload = new DiagnosticsLogPayload(
             diagnosticEvent.Timestamp.ToUniversalTime().ToString("O"),

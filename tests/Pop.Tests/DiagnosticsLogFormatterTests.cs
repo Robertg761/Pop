@@ -26,4 +26,25 @@ public sealed class DiagnosticsLogFormatterTests
         Assert.NotNull(message);
         Assert.True(message!.Length <= 240);
     }
+
+    [Fact]
+    public void Format_DoesNotThrow_WhenFieldKeysCollideAfterTruncation()
+    {
+        var prefix = new string('k', 48);
+        var diagnosticEvent = new DiagnosticEvent(
+            DateTimeOffset.UtcNow,
+            "drag-release",
+            "message",
+            new Dictionary<string, string?>
+            {
+                [prefix + "-one"] = "1",
+                [prefix + "-two"] = "2"
+            });
+
+        var json = DiagnosticsLogFormatter.Format(diagnosticEvent);
+        using var document = JsonDocument.Parse(json);
+
+        Assert.True(document.RootElement.TryGetProperty("fields", out var fields));
+        Assert.Single(fields.EnumerateObject());
+    }
 }

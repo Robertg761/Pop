@@ -25,6 +25,7 @@ public sealed class LinuxPopHost : IDisposable
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly Dictionary<IntPtr, SnapRestoreState> _snapRestoreStates = [];
+    private readonly object _snapRestoreLock = new();
 
     private AppSettings _settings = AppSettings.Default;
 
@@ -76,8 +77,9 @@ public sealed class LinuxPopHost : IDisposable
 
     public async Task SaveSettingsAsync(AppSettings settings)
     {
-        _settings = settings;
+        // Persist first, then adopt in memory, so a failed write leaves memory and disk in sync.
         await _settingsStore.SaveAsync(settings, _disposeCancellation.Token);
+        _settings = settings;
 
         if (_kwinWaylandIntegration is not null)
         {
@@ -180,14 +182,21 @@ public sealed class LinuxPopHost : IDisposable
             SnapDiagnosticFields.ForQualifiedRelease(session, plan));
 
         await _windowMover!.MoveWindowAsync(session.WindowHandle, plan.AnimationPlan, _disposeCancellation.Token);
-        _snapRestoreStates[session.WindowHandle] = new SnapRestoreState(session.InitialBounds, plan.AnimationPlan.FinalBounds);
+        lock (_snapRestoreLock)
+        {
+            _snapRestoreStates[session.WindowHandle] = new SnapRestoreState(session.InitialBounds, plan.AnimationPlan.FinalBounds);
+        }
     }
 
     private bool TryRestorePreviousSnap(DragSession session)
     {
-        if (!_snapRestoreStates.TryGetValue(session.WindowHandle, out var restoreState) || session.Samples.Count == 0)
+        SnapRestoreState restoreState;
+        lock (_snapRestoreLock)
         {
-            return false;
+            if (!_snapRestoreStates.TryGetValue(session.WindowHandle, out restoreState) || session.Samples.Count == 0)
+            {
+                return false;
+            }
         }
 
         var dragSample = session.Samples[^1];
@@ -199,11 +208,17 @@ public sealed class LinuxPopHost : IDisposable
             session.CurrentMonitorInfo.WorkArea,
             out var restoreBounds))
         {
-            _snapRestoreStates.Remove(session.WindowHandle);
+            lock (_snapRestoreLock)
+            {
+                _snapRestoreStates.Remove(session.WindowHandle);
+            }
             return false;
         }
 
-        _snapRestoreStates.Remove(session.WindowHandle);
+        lock (_snapRestoreLock)
+        {
+            _snapRestoreStates.Remove(session.WindowHandle);
+        }
         try
         {
             _windowMover!.MoveWindowAsync(

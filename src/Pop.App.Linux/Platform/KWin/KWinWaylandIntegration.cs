@@ -105,8 +105,27 @@ public sealed class KWinWaylandIntegration : IDisposable
             startInfo.ArgumentList.Add(argument);
         }
 
-        using var process = Process.Start(startInfo)
-            ?? throw new InvalidOperationException("Unable to start gdbus.");
+        Process process;
+        try
+        {
+            process = Process.Start(startInfo)
+                ?? throw new InvalidOperationException("Unable to start gdbus.");
+        }
+        catch (Exception exception) when (exception is System.ComponentModel.Win32Exception or InvalidOperationException)
+        {
+            // gdbus (from glib2 tools) is not installed. This throws even for allowFailure calls
+            // because the failure is at spawn time, not exit time.
+            if (allowFailure)
+            {
+                return;
+            }
+
+            throw new InvalidOperationException(
+                "Pop's KWin Wayland integration requires the 'gdbus' tool (part of glib2). Install it and try again.",
+                exception);
+        }
+
+        using var _ = process;
         var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
         await process.WaitForExitAsync(cancellationToken);

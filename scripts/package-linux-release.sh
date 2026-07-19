@@ -73,11 +73,12 @@ mkdir -p "$log_dir"
 echo "[$(date --iso-8601=seconds)] Starting Pop from AppImage." >> "$log_path"
 notify "Pop is running. Launch output is logged to $log_path."
 
-if "$POP_BIN" "$@" >> "$log_path" 2>&1; then
+"$POP_BIN" "$@" >> "$log_path" 2>&1
+exit_code=$?
+if [[ $exit_code -eq 0 ]]; then
   exit 0
 fi
 
-exit_code=$?
 notify "Pop could not start. See $log_path for details."
 exit "$exit_code"
 EOF
@@ -96,9 +97,47 @@ EOF
 cp "$APPDIR/pop.desktop" "$APPDIR/usr/share/applications/pop.desktop"
 
 if [[ ! -x "$APPIMAGETOOL" ]]; then
-  curl --fail --location --retry 3 --retry-delay 2 \
-    "https://github.com/AppImage/AppImageKit/releases/download/continuous/appimagetool-x86_64.AppImage" \
-    --output "$APPIMAGETOOL"
+  # Prefer a pinned, immutable release over the moving 'continuous' tag so the tool that runs
+  # inside this write-token job cannot be swapped underneath us. AppImageKit is deprecated and
+  # its tag-13 assets were renamed with an 'obsolete-' prefix, so try the current asset name
+  # first, the pre-rename name second, and the maintained repo's continuous build as a last
+  # resort. Set APPIMAGETOOL_URL to force a specific source, and APPIMAGETOOL_SHA256 to enforce
+  # integrity of whatever gets downloaded (recommended); if unset the build only warns.
+  APPIMAGETOOL_TAG="${APPIMAGETOOL_TAG:-13}"
+  if [[ -n "${APPIMAGETOOL_URL:-}" ]]; then
+    candidate_urls=("$APPIMAGETOOL_URL")
+  else
+    candidate_urls=(
+      "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/obsolete-appimagetool-x86_64.AppImage"
+      "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/appimagetool-x86_64.AppImage"
+      "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
+    )
+  fi
+
+  downloaded=""
+  for candidate_url in "${candidate_urls[@]}"; do
+    if curl --fail --location --retry 3 --retry-delay 2 \
+      "$candidate_url" --output "$APPIMAGETOOL"; then
+      downloaded="$candidate_url"
+      break
+    fi
+    echo "appimagetool download failed from $candidate_url; trying next source." >&2
+  done
+
+  if [[ -z "$downloaded" ]]; then
+    echo "Unable to download appimagetool from any configured source." >&2
+    exit 1
+  fi
+  echo "Downloaded appimagetool from $downloaded" >&2
+
+  if [[ -n "${APPIMAGETOOL_SHA256:-}" ]]; then
+    echo "${APPIMAGETOOL_SHA256}  ${APPIMAGETOOL}" | sha256sum --check --status \
+      || { echo "appimagetool checksum verification failed." >&2; exit 1; }
+  else
+    echo "WARNING: APPIMAGETOOL_SHA256 is not set; skipping appimagetool integrity check." >&2
+    echo "Downloaded appimagetool sha256: $(sha256sum "$APPIMAGETOOL" | cut -d' ' -f1)" >&2
+  fi
+
   chmod +x "$APPIMAGETOOL"
 fi
 

@@ -10,6 +10,13 @@
     <UseWindowsForms>true</UseWindowsForms>
     <ApplicationHighDpiMode>PerMonitorV2</ApplicationHighDpiMode>
     <ApplicationManifest>app.manifest</ApplicationManifest>
+    <!--
+      WFAC010 suggests configuring DPI via ApplicationHighDpiMode instead of the manifest, but
+      that property only takes effect through the WinForms ApplicationConfiguration.Initialize()
+      bootstrap, which this WPF app never calls. The manifest dpiAwareness element is the
+      mechanism WPF actually honors, so the manifest is intentional and the warning suppressed.
+    -->
+    <NoWarn>$(NoWarn);WFAC010</NoWarn>
     <ApplicationIcon>Assets\Pop.ico</ApplicationIcon>
     <StartupObject>Pop.App.Windows.App</StartupObject>
     <RootNamespace>Pop.App.Windows</RootNamespace>

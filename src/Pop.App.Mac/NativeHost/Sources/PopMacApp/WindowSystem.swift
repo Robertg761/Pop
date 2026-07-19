@@ -77,7 +77,7 @@ final class AccessibilityWindowSystem {
     }
 
     func move(window: AXUIElement, to rect: DesktopRect) {
-        var position = screenCoordinator.cgPoint(fromTopLeftRect: rect)
+        var position = screenCoordinator.axPoint(fromTopLeftRect: rect)
         var size = CGSize(width: rect.width, height: rect.height)
 
         if let positionValue = AXValueCreate(.cgPoint, &position) {
@@ -107,7 +107,7 @@ final class AccessibilityWindowSystem {
             return nil
         }
 
-        return screenCoordinator.rectInTopLeftSpace(from: CGRect(origin: position, size: size))
+        return screenCoordinator.windowRect(fromAXRect: CGRect(origin: position, size: size))
     }
 
     private func elementAttribute(_ attribute: String, from element: AXUIElement) -> AXUIElement? {

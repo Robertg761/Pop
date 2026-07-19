@@ -3,6 +3,13 @@ using System.Drawing;
 
 namespace Pop.Core.Models;
 
+/// <summary>
+/// Mutable per-drag state. This type is <b>not</b> thread-safe: a drag-tracker implementation
+/// calls <see cref="AddSample"/> and the mutation methods from its input thread, and all
+/// consumers of a session (including reading <see cref="Samples"/>) must observe it on that same
+/// thread. Do not iterate <see cref="Samples"/> from a different thread while the tracker is
+/// still delivering updates.
+/// </summary>
 public sealed class DragSession
 {
     private readonly List<DragSample> _samples = [];
@@ -83,6 +90,11 @@ public sealed class DragSession
         CurrentBounds = bounds;
         _samples.Clear();
         _firstSample = null;
+        // Clear release state too, so a reused session (unsnap then re-throw) does not carry a
+        // stale ReleaseSample / Ctrl flag into the next qualification.
+        ReleaseSample = null;
+        IsCtrlPressedAtRelease = false;
+        CurrentPredictedTarget = SnapTarget.None;
         AddSample(originSample);
     }
 

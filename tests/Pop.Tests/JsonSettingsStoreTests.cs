@@ -51,6 +51,36 @@ public sealed class JsonSettingsStoreTests : IDisposable
         Assert.Equal(AppSettings.Default, settings);
     }
 
+    [Fact]
+    public async Task LoadAsync_BacksUpCorruptFile_BeforeFallingBackToDefaults()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+        await File.WriteAllTextAsync(settingsPath, "{ invalid json");
+        var store = new JsonSettingsStore(_tempDirectory);
+
+        await store.LoadAsync();
+
+        Assert.True(File.Exists(settingsPath + ".corrupt"));
+        Assert.Equal("{ invalid json", await File.ReadAllTextAsync(settingsPath + ".corrupt"));
+    }
+
+    [Fact]
+    public async Task LoadAsync_ClampsOutOfRangeValues()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        await File.WriteAllTextAsync(
+            Path.Combine(_tempDirectory, "settings.json"),
+            "{\"HorizontalDominanceRatio\": 0, \"GlideDurationMs\": -100, \"ThrowVelocityThresholdPxPerSec\": 5}");
+        var store = new JsonSettingsStore(_tempDirectory);
+
+        var settings = await store.LoadAsync();
+
+        Assert.True(settings.HorizontalDominanceRatio >= 1d);
+        Assert.True(settings.GlideDurationMs >= 0);
+        Assert.True(settings.ThrowVelocityThresholdPxPerSec >= 50d);
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))

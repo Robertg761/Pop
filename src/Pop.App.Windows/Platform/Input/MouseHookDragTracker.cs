@@ -40,7 +40,9 @@ public sealed class MouseHookDragTracker : IDragTracker
         _hookHandle = NativeMethods.SetWindowsHookEx(NativeMethods.WhMouseLl, _hookCallback, IntPtr.Zero, 0);
         if (_hookHandle == IntPtr.Zero)
         {
-            throw new InvalidOperationException("Unable to install the global mouse hook.");
+            var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+            throw new InvalidOperationException(
+                $"Unable to install the global mouse hook (Win32 error {error}: {new System.ComponentModel.Win32Exception(error).Message}).");
         }
     }
 
