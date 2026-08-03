@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pop — banner</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 640px; overflow: hidden; }
+  body {
+    font-family: Inter, "Segoe UI", system-ui, sans-serif;
+    position: relative;
+    background:
+      radial-gradient(820px 460px at 76% 6%, rgba(251, 146, 60, 0.16), transparent 62%),
+      radial-gradient(1000px 640px at 8% 104%, rgba(56, 96, 160, 0.28), transparent 70%),
+      linear-gradient(135deg, #091323 0%, #112344 55%, #1b2a50 100%);
+  }
+  body::before { /* dot grid */
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(230, 241, 255, 0.05) 1.2px, transparent 1.3px);
+    background-size: 42px 42px;
+  }
+
+  .lockup {
+    position: absolute; left: 96px; top: 118px;
+    display: flex; align-items: center; gap: 46px;
+  }
+  .mark { filter: drop-shadow(0 14px 42px rgba(251, 146, 60, 0.22)); }
+  .wordmark { color: #f8fafc; font-size: 148px; font-weight: 800; letter-spacing: -6px; line-height: 0.95; }
+  .tagline { color: #fb923c; font-size: 27px; font-weight: 700; letter-spacing: 6px; margin-top: 20px; text-transform: uppercase; }
+  .sub { color: #93a7c4; font-size: 21px; font-weight: 500; margin-top: 22px; letter-spacing: 0.3px; }
+  .sub b { color: #c8d6ec; font-weight: 600; }
+
+  /* the gesture illustration: ghost window arcing into the left-half outline */
+  .strip { position: absolute; left: 96px; right: 96px; bottom: 64px; height: 150px; }
+  .half {
+    position: absolute; left: 0; top: 0; width: 300px; height: 150px;
+    border: 2.5px solid rgba(251, 146, 60, 0.85); border-radius: 12px;
+    background: rgba(251, 146, 60, 0.08);
+    box-shadow: 0 0 30px rgba(251, 146, 60, 0.18) inset;
+  }
+  .ghost {
+    position: absolute; top: 20px; width: 190px; height: 110px;
+    border-radius: 9px; border: 2px solid rgba(200, 214, 236, 0.75);
+    background: rgba(14, 28, 52, 0.85);
+  }
+  .ghost .tb { height: 24px; border-bottom: 1.5px solid rgba(200, 214, 236, 0.35);
+    border-radius: 7px 7px 0 0; background: rgba(22, 41, 74, 0.9);
+    display: flex; align-items: center; gap: 5px; padding: 0 9px; }
+  .ghost .tb i { width: 6.5px; height: 6.5px; border-radius: 50%; background: #33507e; display: block; }
+  .ghost .tb i.hot { background: #fb923c; }
+  .g1 { left: 760px; opacity: 0.34; }
+  .g2 { left: 560px; opacity: 0.55; transform: rotate(-1.2deg); }
+  .g3 { left: 352px; opacity: 0.85; transform: rotate(-2.2deg); }
+  .snapped {
+    position: absolute; left: 7px; top: 7px; width: 286px; height: 136px;
+    border-radius: 8px; background: rgba(14, 28, 52, 0.92);
+    border: 2px solid rgba(230, 241, 255, 0.85);
+  }
+  .snapped .tb { height: 26px; border-bottom: 1.5px solid rgba(200,214,236,0.3);
+    border-radius: 6px 6px 0 0; background: #16294a;
+    display: flex; align-items: center; gap: 5px; padding: 0 10px; }
+  .snapped .tb i { width: 7px; height: 7px; border-radius: 50%; background: #33507e; display: block; }
+  .snapped .tb i.hot { background: #fb923c; }
+  .snapped .ln { height: 8px; border-radius: 4px; background: #1c3156; margin: 11px 12px 0; }
+  .snapped .ln.a { background: linear-gradient(90deg, #f97316, #fb923c); width: 45%; }
+  .arrow-line {
+    position: absolute; left: 316px; top: 72px; width: 620px; height: 4px; border-radius: 2px;
+    background: linear-gradient(90deg, rgba(251, 146, 60, 0.95), rgba(251, 146, 60, 0));
+  }
+  .arrow-head {
+    position: absolute; left: 300px; top: 60px; width: 0; height: 0;
+    border-top: 14px solid transparent; border-bottom: 14px solid transparent;
+    border-right: 22px solid rgba(251, 146, 60, 0.95);
+  }
+</style>
+</head>
+<body>
+  <div class="lockup">
+    <svg class="mark" width="290" height="290" viewBox="0 0 512 512">
+      <defs>
+        <linearGradient id="pa" x1="144" y1="146" x2="248" y2="356" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#FDBA74"/><stop offset="0.45" stop-color="#FB923C"/><stop offset="1" stop-color="#F97316"/>
+        </linearGradient>
+        <linearGradient id="ff" x1="110" y1="140" x2="402" y2="368" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#13284B"/><stop offset="1" stop-color="#0C1930"/>
+        </linearGradient>
+        <linearGradient id="sf" x1="332" y1="90" x2="382" y2="144" gradientUnits="userSpaceOnUse">
+          <stop stop-color="#FFF5E7"/><stop offset="1" stop-color="#FED7AA"/>
+        </linearGradient>
+      </defs>
+      <rect x="110" y="140" width="292" height="228" rx="58" fill="url(#ff)" stroke="#E6F1FF" stroke-width="16"/>
+      <rect x="132" y="162" width="110" height="184" rx="40" fill="url(#pa)"/>
+      <path d="M256 174V334" stroke="#EEF5FF" stroke-width="13" stroke-linecap="round" opacity="0.96"/>
+      <path d="M334 118L352 90L362 108L390 118L362 128L352 146L342 128L314 118L342 108L334 118Z" fill="url(#sf)" stroke="#F97316" stroke-width="10" stroke-linejoin="round"/>
+      <path d="M316 152C333 139 346 127 353 114" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <div class="wordmark">Pop</div>
+      <div class="tagline">Momentum window snapping</div>
+      <div class="sub">Flick a window — it glides into place. &nbsp; <b>Windows</b> · <b>macOS</b> · <b>Linux</b></div>
+    </div>
+  </div>
+
+  <div class="strip">
+    <div class="half">
+      <div class="snapped">
+        <div class="tb"><i class="hot"></i><i></i><i></i></div>
+        <div class="ln a"></div><div class="ln"></div><div class="ln" style="width:65%"></div>
+      </div>
+    </div>
+    <div class="arrow-line"></div>
+    <div class="arrow-head"></div>
+    <div class="ghost g1"><div class="tb"><i class="hot"></i><i></i><i></i></div></div>
+    <div class="ghost g2"><div class="tb"><i class="hot"></i><i></i><i></i></div></div>
+    <div class="ghost g3"><div class="tb"><i class="hot"></i><i></i><i></i></div></div>
+  </div>
+</body>
+</html>

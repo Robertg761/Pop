@@ -1,0 +1,362 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Pop — demo</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { width: 1280px; height: 720px; overflow: hidden; background: #060d1c; }
+  body { font-family: Inter, "Segoe UI", system-ui, sans-serif; position: relative; }
+
+  /* ---------- world / camera ---------- */
+  #world { position: absolute; left: 0; top: 0; width: 2640px; height: 720px; transform-origin: 0 0; }
+
+  .monitor {
+    position: absolute; top: 0; width: 1280px; height: 720px;
+    border-radius: 14px; overflow: hidden;
+    background:
+      radial-gradient(900px 500px at 78% 8%, rgba(251, 146, 60, 0.14), transparent 65%),
+      radial-gradient(1100px 700px at 15% 100%, rgba(56, 96, 160, 0.25), transparent 70%),
+      linear-gradient(135deg, #091323 0%, #112344 55%, #1b2a50 100%);
+    box-shadow: 0 0 0 2px rgba(120, 150, 200, 0.28);
+  }
+  .monitor::before { /* dot grid */
+    content: ""; position: absolute; inset: 0;
+    background-image: radial-gradient(rgba(230, 241, 255, 0.05) 1.2px, transparent 1.3px);
+    background-size: 42px 42px;
+  }
+  #mon1 { left: 0; }
+  #mon2 { left: 1360px; }
+
+  .taskbar {
+    position: absolute; left: 0; right: 0; bottom: 0; height: 36px;
+    background: rgba(7, 14, 28, 0.78); backdrop-filter: blur(6px);
+    border-top: 1px solid rgba(120, 150, 200, 0.18);
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 0 14px; color: #93a7c4; font-size: 13px; font-weight: 500;
+  }
+  .taskbar .tray { display: flex; align-items: center; gap: 10px; }
+  .taskbar svg { display: block; }
+
+  /* ---------- snap zone highlights ---------- */
+  .zone {
+    position: absolute; top: 5px; width: 630px; height: 674px;
+    border-radius: 10px; opacity: 0;
+    border: 2.5px solid rgba(251, 146, 60, 0.9);
+    background: rgba(251, 146, 60, 0.10);
+    box-shadow: 0 0 34px rgba(251, 146, 60, 0.28) inset, 0 0 26px rgba(251, 146, 60, 0.22);
+  }
+  .zone.left { left: 5px; }
+  .zone.right { left: 645px; }
+
+  /* ---------- windows ---------- */
+  .win {
+    position: absolute; border-radius: 10px; overflow: hidden;
+    background: #0e1c34;
+    box-shadow: 0 18px 50px rgba(2, 6, 16, 0.6), 0 0 0 1px rgba(140, 170, 215, 0.28);
+    will-change: transform;
+  }
+  .win .bar {
+    height: 40px; display: flex; align-items: center; gap: 9px; padding: 0 16px;
+    background: linear-gradient(180deg, #16294a, #12233f);
+    border-bottom: 1px solid rgba(120, 150, 200, 0.16);
+  }
+  .win .bar .dot { width: 11px; height: 11px; border-radius: 50%; background: #33507e; }
+  .win .bar .dot.hot { background: #fb923c; }
+  .win .bar .name { margin-left: 8px; color: #c8d6ec; font-size: 14px; font-weight: 600; letter-spacing: 0.2px; }
+  .win .body { padding: 20px 22px; display: flex; flex-direction: column; gap: 13px; }
+  .line { height: 13px; border-radius: 7px; background: #1c3156; }
+  .line.a { background: linear-gradient(90deg, #f97316, #fb923c); opacity: 0.85; }
+  .line.w40 { width: 40%; } .line.w60 { width: 60%; } .line.w75 { width: 75%; } .line.w90 { width: 90%; }
+  .block { border-radius: 9px; background: #16294a; height: 90px; }
+
+  /* ---------- motion trail streaks ---------- */
+  .streak {
+    position: absolute; height: 7px; border-radius: 4px; opacity: 0; z-index: 6;
+    background: linear-gradient(90deg, transparent, rgba(251, 146, 60, 0.85));
+    will-change: transform, width, opacity;
+  }
+  .streak.rev { background: linear-gradient(90deg, rgba(251, 146, 60, 0.85), transparent); }
+
+  /* ---------- cursor + press ring ---------- */
+  #cursor { position: absolute; width: 26px; height: 26px; z-index: 100; will-change: transform; filter: drop-shadow(0 2px 4px rgba(0,0,0,0.55)); }
+  #ring {
+    position: absolute; width: 46px; height: 46px; border-radius: 50%; z-index: 99;
+    border: 3px solid rgba(251, 146, 60, 0.9); opacity: 0; will-change: transform, opacity;
+  }
+
+  /* ---------- viewport overlays ---------- */
+  .overlay {
+    position: absolute; inset: 0; z-index: 40;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    background:
+      radial-gradient(900px 520px at 72% 12%, rgba(251, 146, 60, 0.12), transparent 60%),
+      linear-gradient(135deg, #091323 0%, #112344 58%, #1b2a50 100%);
+    text-align: center;
+  }
+  .overlay .wordmark { color: #f8fafc; font-size: 88px; font-weight: 800; letter-spacing: -4px; line-height: 1; margin-top: 26px; }
+  .overlay .tagline { color: #fb923c; font-size: 19px; font-weight: 700; letter-spacing: 5px; margin-top: 18px; text-transform: uppercase; }
+  .overlay .sub { color: #93a7c4; font-size: 18px; font-weight: 500; margin-top: 26px; letter-spacing: 0.3px; }
+  .overlay .sub b { color: #c8d6ec; font-weight: 600; }
+  #endCard { opacity: 0; }
+
+  #caption {
+    position: absolute; left: 50%; bottom: 58px; transform: translateX(-50%);
+    z-index: 30; white-space: nowrap;
+  }
+  .cap {
+    position: absolute; left: 50%; bottom: 0; transform: translateX(-50%);
+    display: flex; align-items: center; gap: 12px; white-space: nowrap;
+    background: rgba(7, 14, 28, 0.82); border: 1px solid rgba(120, 150, 200, 0.28);
+    border-radius: 999px; padding: 13px 26px; opacity: 0;
+    color: #e6eefb; font-size: 20px; font-weight: 600; letter-spacing: 0.2px;
+    box-shadow: 0 10px 30px rgba(2, 6, 16, 0.5);
+  }
+  .cap .dot { width: 9px; height: 9px; border-radius: 50%; background: #fb923c; flex: none; }
+  .cap kbd {
+    font-family: inherit; font-size: 17px; font-weight: 700; color: #ffd9b0;
+    border: 1.5px solid rgba(251, 146, 60, 0.75); border-bottom-width: 3px;
+    border-radius: 7px; padding: 2px 10px; margin: 0 2px;
+    transition: background 0.12s, color 0.12s;
+  }
+  .cap kbd.down { background: #f97316; color: #0a1428; border-color: #fdba74; }
+</style>
+</head>
+<body>
+
+<div id="world">
+  <div class="monitor" id="mon1">
+    <div class="zone left" id="zoneL1"></div>
+    <div class="zone right" id="zoneR1"></div>
+    <div class="taskbar">
+      <span></span>
+      <span class="tray">
+        <svg width="17" height="17" viewBox="0 0 512 512"><rect x="110" y="140" width="292" height="228" rx="58" fill="#13284b" stroke="#e6f1ff" stroke-width="16"/><rect x="132" y="162" width="110" height="184" rx="40" fill="#fb923c"/><path d="M256 174V334" stroke="#eef5ff" stroke-width="13" stroke-linecap="round"/></svg>
+        9:41
+      </span>
+    </div>
+  </div>
+  <div class="monitor" id="mon2">
+    <div class="zone left" id="zoneL2"></div>
+    <div class="taskbar"><span></span><span class="tray">9:41</span></div>
+  </div>
+
+  <div class="win" id="winB">
+    <div class="bar"><span class="dot"></span><span class="dot"></span><span class="dot"></span><span class="name">Docs</span></div>
+    <div class="body">
+      <div class="line w75"></div><div class="line w90"></div><div class="line w60"></div>
+      <div class="block"></div><div class="line w75"></div><div class="line w40"></div>
+    </div>
+  </div>
+
+  <div class="win" id="winA">
+    <div class="bar"><span class="dot hot"></span><span class="dot"></span><span class="dot"></span><span class="name">Notes</span></div>
+    <div class="body">
+      <div class="line a w40"></div><div class="line w90"></div><div class="line w75"></div>
+      <div class="line w60"></div><div class="block"></div><div class="line w75"></div>
+    </div>
+  </div>
+
+  <div class="streak" id="s1"></div>
+  <div class="streak" id="s2"></div>
+  <div class="streak" id="s3"></div>
+
+  <div id="ring"></div>
+  <div id="cursor">
+    <svg width="26" height="26" viewBox="0 0 26 26">
+      <path d="M4 2 L4 20 L8.6 15.8 L11.6 23 L15.2 21.4 L12.2 14.4 L18.5 14 Z"
+            fill="#f5f8ff" stroke="#0a1428" stroke-width="1.8" stroke-linejoin="round"/>
+    </svg>
+  </div>
+</div>
+
+<div id="caption">
+  <div class="cap" id="capA"><span class="dot"></span>Flick left&nbsp;—&nbsp;Pop glides it into the left half</div>
+  <div class="cap" id="capB"><span class="dot"></span>Flick right for a perfect side-by-side</div>
+  <div class="cap" id="capC"><span class="dot"></span>Hold&nbsp;<kbd id="ctrlKey">Ctrl</kbd>&nbsp;to throw across monitors</div>
+</div>
+
+<div class="overlay" id="endCard">
+  <svg width="170" height="170" viewBox="0 0 512 512">
+    <defs>
+      <linearGradient id="tpa" x1="144" y1="146" x2="248" y2="356" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#FDBA74"/><stop offset="0.45" stop-color="#FB923C"/><stop offset="1" stop-color="#F97316"/>
+      </linearGradient>
+      <linearGradient id="tff" x1="110" y1="140" x2="402" y2="368" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#13284B"/><stop offset="1" stop-color="#0C1930"/>
+      </linearGradient>
+      <linearGradient id="tsf" x1="332" y1="90" x2="382" y2="144" gradientUnits="userSpaceOnUse">
+        <stop stop-color="#FFF5E7"/><stop offset="1" stop-color="#FED7AA"/>
+      </linearGradient>
+    </defs>
+    <rect x="110" y="140" width="292" height="228" rx="58" fill="url(#tff)" stroke="#E6F1FF" stroke-width="16"/>
+    <rect x="132" y="162" width="110" height="184" rx="40" fill="url(#tpa)"/>
+    <path d="M256 174V334" stroke="#EEF5FF" stroke-width="13" stroke-linecap="round" opacity="0.96"/>
+    <path d="M334 118L352 90L362 108L390 118L362 128L352 146L342 128L314 118L342 108L334 118Z" fill="url(#tsf)" stroke="#F97316" stroke-width="10" stroke-linejoin="round"/>
+    <path d="M316 152C333 139 346 127 353 114" stroke="#F97316" stroke-width="10" stroke-linecap="round"/>
+  </svg>
+  <div class="wordmark">Pop</div>
+  <div class="tagline">Momentum window snapping</div>
+  <div class="sub"><b>Windows</b> &nbsp;·&nbsp; <b>macOS</b> &nbsp;·&nbsp; <b>Linux</b> &nbsp;·&nbsp; github.com/Robertg761/Pop</div>
+</div>
+
+<script>
+/* ============ timeline helpers ============ */
+const clamp01 = v => v < 0 ? 0 : v > 1 ? 1 : v;
+const lerp = (a, b, p) => a + (b - a) * p;
+const eInOut = p => p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2;
+const eOut = p => 1 - Math.pow(1 - p, 3);
+const eIn = p => p * p * p;
+/* eased progress of t within [t0, t1] */
+const seg = (t, t0, t1, ez) => (ez || (p => p))(clamp01((t - t0) / (t1 - t0)));
+/* opacity window: fade in over [i0,i1], out over [o0,o1] */
+const fade = (t, i0, i1, o0, o1) => seg(t, i0, i1) * (1 - seg(t, o0, o1));
+
+/* ============ layout constants ============ */
+const M2X = 1360;                       // monitor 2 world offset
+const L1 = { x: 5, y: 5 }, R1 = { x: 645, y: 5 }, L2 = { x: M2X + 5, y: 5 };
+const HALF = { w: 630, h: 674 };
+const A0 = { x: 430, y: 150, w: 560, h: 380 };   // winA floating
+const B0 = { x: 560, y: 180, w: 600, h: 420 };   // winB floating
+const OFF_A = { x: 280, y: 20 };                 // cursor grab offsets
+const OFF_B = { x: 300, y: 20 };
+const CAM2 = { s: 0.4545, tx: 40, ty: 196 };     // zoomed-out camera
+
+const $ = id => document.getElementById(id);
+const world = $('world'), cursor = $('cursor'), ring = $('ring');
+const winA = $('winA'), winB = $('winB');
+const streaks = [$('s1'), $('s2'), $('s3')];
+
+function place(el, x, y, w, h) {
+  el.style.transform = `translate(${x}px, ${y}px)`;
+  if (w !== undefined) { el.style.width = w + 'px'; el.style.height = h + 'px'; }
+}
+
+/* trail streaks behind a moving window; dir = -1 moving left, +1 moving right */
+function trail(wx, wy, ww, wh, dir, p) {
+  const len = Math.pow(1 - p, 1.6) * 150 + 20;
+  const op = (1 - p) * 0.75;
+  const ys = [wy + 70, wy + wh * 0.5, wy + wh - 80];
+  streaks.forEach((s, i) => {
+    const stagger = 1 - i * 0.13;
+    s.style.opacity = op * stagger;
+    s.style.width = len * stagger + 'px';
+    const x = dir < 0 ? wx + ww + 8 : wx - len * stagger - 8;
+    s.className = 'streak' + (dir < 0 ? '' : ' rev');
+    s.style.transform = `translate(${x}px, ${ys[i]}px)`;
+  });
+}
+function trailOff() { streaks.forEach(s => { s.style.opacity = 0; }); }
+
+/* press ring pulse at (x, y), local time tl in [0, 0.45] */
+function pulse(x, y, tl) {
+  if (tl < 0 || tl > 0.45) { ring.style.opacity = 0; return; }
+  const p = tl / 0.45;
+  ring.style.opacity = (1 - p) * 0.9;
+  const sc = 0.25 + p * 1.5;
+  ring.style.transform = `translate(${x - 23}px, ${y - 23}px) scale(${sc})`;
+}
+
+/* ============ master timeline ============ */
+function render(t) {
+  /* ----- camera ----- */
+  const zp = seg(t, 7.8, 8.7, eInOut);
+  const s = lerp(1, CAM2.s, zp), tx = lerp(0, CAM2.tx, zp), ty = lerp(0, CAM2.ty, zp);
+  world.style.transform = `translate(${tx}px, ${ty}px) scale(${s})`;
+
+  /* ----- cursor path ----- */
+  let cx = 900, cy = 600;
+  { const p = seg(t, 0.6, 1.3, eInOut); cx = lerp(900, 710, p); cy = lerp(600, 170, p); }
+  if (t >= 1.55) { const p = seg(t, 1.55, 2.35, eIn); cx = lerp(710, 560, p); cy = lerp(170, 205, p); }
+  if (t >= 2.35) { const p = seg(t, 2.35, 2.75, eOut); cx = lerp(560, 505, p); cy = lerp(205, 215, p); }
+  if (t >= 4.4)  { const p = seg(t, 4.4, 5.0, eInOut); cx = lerp(505, 860, p); cy = lerp(215, 200, p); }
+  if (t >= 5.2)  { const p = seg(t, 5.2, 5.9, eIn);    cx = lerp(860, 1010, p); cy = lerp(200, 235, p); }
+  if (t >= 5.9)  { const p = seg(t, 5.9, 6.3, eOut);   cx = lerp(1010, 1060, p); cy = lerp(235, 247, p); }
+  if (t >= 8.7)  { const p = seg(t, 8.7, 9.3, eInOut); cx = lerp(1060, 960, p); cy = lerp(247, 25, p); }
+  if (t >= 9.5)  { const p = seg(t, 9.5, 10.3, eIn);  cx = lerp(960, 1240, p); cy = lerp(25, 180, p); }
+  if (t >= 10.3) { const p = seg(t, 10.3, 10.7, eOut); cx = lerp(1240, 1290, p); cy = lerp(180, 190, p); }
+  place(cursor, cx, cy);
+
+  /* press ring pulses */
+  pulse(cx, cy, t - 1.3); if (t >= 4.9) pulse(cx, cy, t - 5.0); if (t >= 9.2) pulse(cx, cy, t - 9.3);
+
+  /* ----- window A: float → drag → snap left ----- */
+  let ax = A0.x, ay = A0.y, aw = A0.w, ah = A0.h;
+  if (t >= 1.55 && t < 2.35) { ax = cx - OFF_A.x; ay = cy - OFF_A.y; }
+  if (t >= 2.35) {
+    const p = seg(t, 2.35, 2.85, eOut);
+    ax = lerp(560 - OFF_A.x, L1.x, p); ay = lerp(205 - OFF_A.y, L1.y, p);
+    aw = lerp(A0.w, HALF.w, p); ah = lerp(A0.h, HALF.h, p);
+  }
+  place(winA, ax, ay, aw, ah);
+  winA.style.boxShadow = (t >= 1.3 && t < 2.9)
+    ? '0 28px 70px rgba(2,6,16,0.75), 0 0 0 1.5px rgba(251,146,60,0.55)'
+    : '';
+
+  /* ----- window B: float → snap right → restore → thrown to monitor 2 ----- */
+  let bx = B0.x, by = B0.y, bw = B0.w, bh = B0.h;
+  if (t >= 5.2 && t < 5.9) { bx = cx - OFF_B.x; by = cy - OFF_B.y; }
+  if (t >= 5.9) {
+    const p = seg(t, 5.9, 6.4, eOut);
+    bx = lerp(1010 - OFF_B.x, R1.x, p); by = lerp(235 - OFF_B.y, R1.y, p);
+    bw = lerp(B0.w, HALF.w, p); bh = lerp(B0.h, HALF.h, p);
+  }
+  if (t >= 9.3) { /* restore from snapped before drag */
+    const p = seg(t, 9.3, 9.48, eOut);
+    bx = lerp(R1.x, 660, p); by = lerp(R1.y, 5, p);
+    bw = lerp(HALF.w, B0.w, p); bh = lerp(HALF.h, B0.h, p);
+  }
+  if (t >= 9.5 && t < 10.3) { bx = cx - OFF_B.x; by = cy - OFF_B.y; }
+  if (t >= 10.3) { /* fly across the gap, slight arc */
+    const p = seg(t, 10.3, 11.05, eOut);
+    bx = lerp(1240 - OFF_B.x, L2.x, p);
+    by = lerp(180 - OFF_B.y, L2.y, p) - 55 * Math.sin(Math.PI * p);
+    bw = lerp(B0.w, HALF.w, p); bh = lerp(B0.h, HALF.h, p);
+  }
+  place(winB, bx, by, bw, bh);
+  winB.style.zIndex = t >= 4.9 ? 5 : 1;
+  winB.style.boxShadow = ((t >= 4.9 && t < 6.5) || (t >= 9.2 && t < 11.2))
+    ? '0 28px 70px rgba(2,6,16,0.75), 0 0 0 1.5px rgba(251,146,60,0.55)'
+    : '';
+
+  /* ----- trails ----- */
+  if (t >= 2.35 && t < 2.95) trail(ax, ay, aw, ah, -1, seg(t, 2.35, 2.95));
+  else if (t >= 5.9 && t < 6.5) trail(bx, by, bw, bh, +1, seg(t, 5.9, 6.5));
+  else if (t >= 10.3 && t < 11.15) trail(bx, by, bw, bh, +1, seg(t, 10.3, 11.15));
+  else trailOff();
+
+  /* ----- zone highlights ----- */
+  $('zoneL1').style.opacity = fade(t, 2.35, 2.47, 3.0, 3.45);
+  $('zoneR1').style.opacity = fade(t, 5.9, 6.02, 6.55, 7.0);
+  $('zoneL2').style.opacity = fade(t, 10.3, 10.42, 11.15, 11.6);
+
+  /* ----- captions / chip ----- */
+  $('capA').style.opacity = fade(t, 0.9, 1.2, 3.9, 4.2);
+  $('capB').style.opacity = fade(t, 4.7, 5.0, 7.2, 7.5);
+  $('capC').style.opacity = fade(t, 8.4, 8.7, 12.3, 12.6);
+  $('ctrlKey').classList.toggle('down', t >= 10.1 && t < 10.65);
+
+  /* ----- end card ----- */
+  $('endCard').style.opacity = seg(t, 12.8, 13.4);
+}
+
+const TOTAL = 15.4;
+let t0 = null, running = false;
+function tick(now) {
+  if (!running) return;
+  const t = (now - t0) / 1000;
+  render(Math.min(t, TOTAL));
+  if (t < TOTAL + 0.3) requestAnimationFrame(tick);
+  else { running = false; window.__done = true; }
+}
+function start() {
+  window.__done = false; running = true;
+  requestAnimationFrame(now => { t0 = now; tick(now); });
+}
+window.render = render; window.start = start;
+render(0);
+</script>
+</body>
+</html>

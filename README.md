@@ -1,8 +1,18 @@
 # Pop
 
+<p align="center">
+  <img src="docs/media/pop-hero.png" alt="Pop — momentum window snapping" width="820">
+</p>
+
 Pop is a desktop utility that adds momentum-based window snapping. Drag a window by its title bar, flick left or right, and Pop animates the window into the corresponding half of the current monitor.
 
 Windows and macOS are first-class hosts. Linux is supported on X11 and Plasma Wayland (KWin). All platforms share snap qualification, tile math, and animation planning from `Pop.Core`.
+
+<p align="center">
+  <img src="docs/media/pop-demo.gif" alt="Demo: flicking windows into halves and throwing across monitors" width="820">
+</p>
+
+<sub>An MP4 version of this demo lives at [`docs/media/pop-demo.mp4`](docs/media/pop-demo.mp4), alongside still shots in [`docs/media/`](docs/media/) you can use in posts or release notes.</sub>
 
 ## What It Does
 
@@ -40,23 +50,23 @@ Pop currently targets a focused v1 workflow:
 - Windows 10/11, macOS 13+ on Apple Silicon, or Linux (X11, or Plasma Wayland via KWin)
 - .NET 8 SDK for building from source
 
-`Pop.Core`, `Pop.Platform.Abstractions`, the macOS bridge, and the Linux app target `net8.0`. The Windows app and Windows test project target `net8.0-windows10.0.22621.0` and use WPF plus WinForms interop for the tray icon. The native macOS host is a Swift Package in `src/Pop.App.Mac/NativeHost`.
+`Pop.Core`, `Pop.Platform.Abstractions`, the macOS bridge, and the Linux app target `net8.0`. The Windows app and Windows test project target `net8.0-windows10.0.22621.0` and use WPF plus WinForms interop for the tray icon. The native macOS host is a Swift Package in `src/Pop.App.Mac/NativeHost`. The Linux app uses Avalonia for its tray and settings UI.
 
 ## Download & Install
 
-Pop is now set up for release artifacts on Windows, macOS, and Linux:
+Grab the latest release from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page:
 
-1. Download the latest `Setup.exe` from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page.
-2. On macOS, download the latest `Pop-macos-arm64-<version>.zip`, unzip it, and move `Pop.app` into `Applications`.
-3. On Linux, download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it from a terminal with `./Pop-linux-x64-<version>.AppImage`. The current Linux build supports X11 sessions and Plasma Wayland through a KWin script. If it is launched without a terminal, startup output is written to `~/.config/Pop/launch.log`. The Linux release also includes a `.tar.gz` package.
-4. Launch Pop and grant Accessibility permission when prompted.
-5. Open `Settings` from the tray/menu-bar icon to tune behavior.
+- **Windows**: download and run `Setup.exe`.
+- **macOS**: download `Pop-macos-arm64-<version>.zip`, unzip it, move `Pop.app` into `Applications`, then launch Pop and grant Accessibility permission when prompted.
+- **Linux**: download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it (X11 sessions and Plasma Wayland via a KWin script are supported). If it is launched without a terminal, startup output is written to `~/.config/Pop/launch.log`. The release also includes a `.tar.gz` package.
 
-Installed builds check for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready.
+Once Pop is running, open `Settings` from the tray/menu-bar icon to tune behavior.
 
-The GitHub release page only needs to host `Setup.exe`. Velopack feed files stay in the repo's `update-feed` branch so installed builds can update without cluttering release assets.
+Installed builds check for updates automatically after launch and about every six hours after that. Updates download in the background and then prompt you to restart Pop when the new version is ready. On Linux, in-app updates are supported for the AppImage package; `.tar.gz` builds can still be updated manually from GitHub Releases.
 
-Both the Windows tray app and the macOS menu-bar app now share the same update flow: automatic background checks, manual `Check for Updates...`, download progress, and an install action once the downloaded update is ready. On macOS, in-app updates currently require Pop to be installed in a writable Applications folder such as `~/Applications`. The macOS packaging script ad-hoc signs `Pop.app` by default and also accepts `POP_MAC_CODESIGN_IDENTITY` when you want to sign with a real certificate. Using a stable signing identity helps macOS remember Accessibility permission across launches and updates.
+The GitHub release page hosts the user-facing `Setup.exe`, macOS archives, and Linux packages. Windows Velopack feed files stay in the repo's `update-feed` branch so installed Windows builds can update without cluttering release assets.
+
+The Windows tray app, macOS menu-bar app, and Linux AppImage app share the same update flow: automatic background checks, manual `Check for Updates...`, download progress, and an install action once the downloaded update is ready. On macOS, in-app updates currently require Pop to be installed in a writable Applications folder such as `~/Applications`. On Linux, the AppImage must be launched from a writable location so Pop can replace it after shutdown. The macOS packaging script ad-hoc signs `Pop.app` by default and also accepts `POP_MAC_CODESIGN_IDENTITY` when you want to sign with a real certificate. Using a stable signing identity helps macOS remember Accessibility permission across launches and updates.
 
 ## Build From Source
 
@@ -73,13 +83,19 @@ Run the Windows app:
 dotnet run --project .\src\Pop.App.Windows\Pop.App.Windows.csproj
 ```
 
+Run the Linux app:
+
+```bash
+dotnet run --project src/Pop.App.Linux/Pop.App.Linux.csproj
+```
+
 Build and package the macOS app:
 
 ```zsh
 ./scripts/package-mac-release.sh
 ```
 
-When Pop starts, it lives in the system tray on Windows and in the menu bar on macOS. Use `Open Settings` from the tray/menu-bar menu to configure it.
+When Pop starts, it lives in the system tray on Windows and Linux and in the menu bar on macOS. Use `Open Settings` from the tray/menu-bar menu to configure it.
 
 ## How To Use Pop
 
@@ -87,7 +103,7 @@ When Pop starts, it lives in the system tray on Windows and in the menu bar on m
 2. Click and hold a supported window's title bar.
 3. Drag and release with a fast horizontal flick.
 4. Pop snaps the window to the left or right half of the current monitor.
-5. Hold `Ctrl` at release on Windows or `Option` on macOS to throw across monitors, including stacked monitors above or below. Fast throws use the landing side on the destination monitor; slower cross-monitor throws prefer the edge closest to the monitor they came from.
+5. Hold `Ctrl` at release on Windows and Linux, or `Option` on macOS, to throw across monitors, including stacked monitors above or below. Fast throws use the landing side on the destination monitor; slower cross-monitor throws prefer the edge closest to the monitor they came from.
 
 If the release is too slow or too vertical, the window is left alone.
 
@@ -103,6 +119,12 @@ On macOS the same logical JSON document lives in:
 
 ```text
 ~/Library/Application Support/Pop/settings.json
+```
+
+On Linux it lives in:
+
+```text
+~/.config/Pop/settings.json
 ```
 
 Available settings (canonical names/defaults live in `contracts/app-settings.contract.json`):
@@ -162,6 +184,8 @@ On macOS, launch-at-login is implemented with a per-user LaunchAgent plist under
 ~/Library/LaunchAgents/com.pop.app.plist
 ```
 
+Launch-at-startup is not yet implemented on Linux.
+
 ## Development Notes
 
 - See `docs/ARCHITECTURE.md` for layering, the shared snap pipeline, and Linux support boundaries.
@@ -172,6 +196,7 @@ On macOS, launch-at-login is implemented with a per-user LaunchAgent plist under
 - Local tests: `dotnet test tests/Pop.Tests/Pop.Tests.csproj`, `./scripts/build-mac-bridge.sh`, and `swift test --package-path src/Pop.App.Mac/NativeHost`.
 - When changing settings keys or defaults, update `contracts/app-settings.contract.json`, C# `AppSettings`, Swift `AppSettings`, and the contract tests together.
 - Shared release metadata lives in `Directory.Build.props`.
+- The hero banner, demo GIF/MP4, and still shots live in `docs/media`; `docs/media/README.md` explains how to regenerate them.
 - A push to `main` that bumps `Version` in `Directory.Build.props` triggers the Windows and macOS release workflow in `.github/workflows/release.yml`; a successful main release then triggers `.github/workflows/release-linux.yml` to attach Linux AppImage and tarball assets.
 - For local release artifacts, run `.\scripts\package-release.ps1` on Windows, `./scripts/package-mac-release.sh` on macOS, or `./scripts/package-linux-release.sh` on Linux.
 - Branding sources live under `artifacts/branding/` (tracked). Build outputs under `artifacts/mac/` are gitignored.
