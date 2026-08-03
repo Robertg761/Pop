@@ -30,10 +30,11 @@ public partial class SettingsWindow : Window
 
     public void ShowOrBringToFront(AppSettings settings)
     {
-        _viewModel.Apply(settings);
-
         if (!IsVisible)
         {
+            // Only refresh from saved settings when the window (re)opens; re-applying while it
+            // is already visible would discard the user's in-progress edits.
+            _viewModel.Apply(settings);
             Show();
         }
 
@@ -112,7 +113,15 @@ public partial class SettingsWindow : Window
 
     private void InstallUpdateButton_OnClick(object sender, RoutedEventArgs e)
     {
-        _updateService.ApplyPendingUpdateAndRestart();
+        try
+        {
+            _updateService.ApplyPendingUpdateAndRestart();
+        }
+        catch (Exception exception)
+        {
+            UpdateStatusTextBlock.Text = $"Install failed: {exception.Message}";
+            System.Windows.MessageBox.Show(this, exception.Message, "Update Install Failed", MessageBoxButton.OK, MessageBoxImage.Warning);
+        }
     }
 
     private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
@@ -123,7 +132,14 @@ public partial class SettingsWindow : Window
             return;
         }
 
-        Dispatcher.Invoke(() => ApplyUpdateState(e.State));
+        try
+        {
+            Dispatcher.Invoke(() => ApplyUpdateState(e.State));
+        }
+        catch (Exception exception) when (exception is System.Threading.Tasks.TaskCanceledException or OperationCanceledException)
+        {
+            // Dispatcher is shutting down; drop the stale update-state notification.
+        }
     }
 
     private void ApplyUpdateState(UpdateState state)

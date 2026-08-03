@@ -1,5 +1,4 @@
 # Build outputs and local SDK copies
-artifacts/mac/
 .dotnet/
 .dotnet8/
 .vs/

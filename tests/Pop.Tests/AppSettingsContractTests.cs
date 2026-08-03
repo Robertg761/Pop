@@ -18,15 +18,18 @@ public sealed class AppSettingsContractTests
         Assert.Equal(defaults.GetProperty("HorizontalDominanceRatio").GetDouble(), settings.HorizontalDominanceRatio);
         Assert.Equal(defaults.GetProperty("GlideDurationMs").GetInt32(), settings.GlideDurationMs);
         Assert.Equal(defaults.GetProperty("EnableDiagnostics").GetBoolean(), settings.EnableDiagnostics);
+        Assert.Equal(contract.GetProperty("schemaVersion").GetInt32(), settings.SchemaVersion);
     }
 
     [Fact]
     public void SerializedSettings_UseCanonicalJsonPropertyNames()
     {
         var contract = LoadContract();
+        // Persisted documents carry the contract's schemaVersion alongside the settings keys.
         var expectedNames = contract.GetProperty("jsonPropertyNames")
             .EnumerateArray()
             .Select(element => element.GetString()!)
+            .Append("schemaVersion")
             .OrderBy(name => name, StringComparer.Ordinal)
             .ToArray();
 

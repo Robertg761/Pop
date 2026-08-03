@@ -8,11 +8,12 @@ namespace Pop.App.Linux.Platform.X11;
 
 public sealed class X11WindowInspector : IWindowInspector
 {
-    private const int FallbackTitleBarHeight = 48;
+    private const int CsdTitleBarHeight = 40;
     private static readonly TimeSpan MonitorInfoCacheDuration = TimeSpan.FromMilliseconds(250);
     private readonly X11DisplayConnection _connection;
     private readonly WindowEligibilityEvaluator _evaluator;
     private IReadOnlyList<Rectangle> _cachedScreens = Array.Empty<Rectangle>();
+    private IReadOnlyList<IReadOnlyList<long>> _cachedStruts = Array.Empty<IReadOnlyList<long>>();
     private Rectangle _cachedDisplayBounds;
     private Rectangle _cachedGlobalWorkArea;
     private DateTimeOffset _cachedLayoutValidUntil;
@@ -57,7 +58,12 @@ public sealed class X11WindowInspector : IWindowInspector
         if (_cachedScreens.Count > 1)
         {
             var monitorBounds = SelectMonitor(_cachedScreens, screenPoint);
-            return new MonitorInfo(monitorBounds, IntersectWorkArea(_cachedGlobalWorkArea, monitorBounds));
+            // Prefer panel struts: _NET_WORKAREA is one global rect, so intersecting it with
+            // each monitor lets one monitor's panel shave space off every monitor.
+            var workArea = _cachedStruts.Count > 0
+                ? X11WorkAreaCalculator.ComputeWorkArea(monitorBounds, _cachedDisplayBounds, _cachedStruts)
+                : IntersectWorkArea(_cachedGlobalWorkArea, monitorBounds);
+            return new MonitorInfo(monitorBounds, workArea);
         }
 
         return new MonitorInfo(_cachedDisplayBounds, _cachedGlobalWorkArea);
@@ -73,7 +79,35 @@ public sealed class X11WindowInspector : IWindowInspector
         _cachedDisplayBounds = new Rectangle(0, 0, GetDisplayWidth(), GetDisplayHeight());
         _cachedGlobalWorkArea = ReadGlobalWorkArea(_cachedDisplayBounds);
         _cachedScreens = QueryXineramaScreens();
+        _cachedStruts = _cachedScreens.Count > 1 ? ReadClientStruts() : Array.Empty<IReadOnlyList<long>>();
         _cachedLayoutValidUntil = now + MonitorInfoCacheDuration;
+    }
+
+    private IReadOnlyList<IReadOnlyList<long>> ReadClientStruts()
+    {
+        var atoms = _connection.Atoms;
+        var clientWindows = X11PropertyReader.ReadIntPtrArray(
+            _connection,
+            _connection.RootWindow,
+            atoms.NetClientList,
+            X11Native.XaWindow.ToInt64());
+
+        List<IReadOnlyList<long>>? struts = null;
+        foreach (var clientWindow in clientWindows)
+        {
+            var strut = X11PropertyReader.ReadLongArray(_connection, clientWindow, atoms.NetWmStrutPartial);
+            if (strut.Count < 12)
+            {
+                strut = X11PropertyReader.ReadLongArray(_connection, clientWindow, atoms.NetWmStrut);
+            }
+
+            if (strut.Count >= 4 && (strut[0] > 0 || strut[1] > 0 || strut[2] > 0 || strut[3] > 0))
+            {
+                (struts ??= []).Add(strut);
+            }
+        }
+
+        return struts ?? (IReadOnlyList<IReadOnlyList<long>>)Array.Empty<IReadOnlyList<long>>();
     }
 
     private Rectangle ReadGlobalWorkArea(Rectangle displayBounds)
@@ -236,6 +270,11 @@ public sealed class X11WindowInspector : IWindowInspector
         uint mask;
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                return X11PointerSnapshot.Empty;
+            }
+
             success = X11Native.XQueryPointer(
                 _connection.Display,
                 _connection.RootWindow,
@@ -270,6 +309,11 @@ public sealed class X11WindowInspector : IWindowInspector
         uint childrenCount;
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                return IntPtr.Zero;
+            }
+
             queryTreeResult = X11Native.XQueryTree(
                 _connection.Display,
                 window,
@@ -331,6 +375,11 @@ public sealed class X11WindowInspector : IWindowInspector
         int rootY;
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                return Rectangle.Empty;
+            }
+
             geometryResult = X11Native.XGetGeometry(
                 _connection.Display,
                 window,
@@ -375,6 +424,11 @@ public sealed class X11WindowInspector : IWindowInspector
         X11Native.XWindowAttributes attributes;
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                return false;
+            }
+
             result = X11Native.XGetWindowAttributes(_connection.Display, window, out attributes);
         }
 
@@ -385,7 +439,7 @@ public sealed class X11WindowInspector : IWindowInspector
     {
         lock (_connection.SyncRoot)
         {
-            return X11Native.XDisplayWidth(_connection.Display, _connection.Screen);
+            return _connection.IsDisposed ? 0 : X11Native.XDisplayWidth(_connection.Display, _connection.Screen);
         }
     }
 
@@ -393,7 +447,7 @@ public sealed class X11WindowInspector : IWindowInspector
     {
         lock (_connection.SyncRoot)
         {
-            return X11Native.XDisplayHeight(_connection.Display, _connection.Screen);
+            return _connection.IsDisposed ? 0 : X11Native.XDisplayHeight(_connection.Display, _connection.Screen);
         }
     }
 
@@ -409,7 +463,20 @@ public sealed class X11WindowInspector : IWindowInspector
             return false;
         }
 
-        return point.Y < clientBounds.Top + Math.Min(FallbackTitleBarHeight, Math.Max(1, clientBounds.Height / 5));
+        // A frame extending above the client means the WM drew a server-side title bar, so a
+        // press inside the client area (browser tabs, toolbars) is never the caption.
+        if (frameWindow != clientWindow && clientBounds.Top > frameBounds.Top)
+        {
+            return false;
+        }
+
+        // Client-side-decoration heuristic: X11 gives no way to know where a CSD header bar
+        // ends, so assume a narrow band at the top of the client area. Keep it tight — at most
+        // a typical GTK header bar (~40px) and no more than an eighth of the window — so fast
+        // horizontal drags of tabs/toolbars below the header don't snap the whole window.
+        // (Non-NORMAL _NET_WM_WINDOW_TYPE windows are already rejected by the eligibility
+        // evaluator via WindowTraits.IsAppWindow.)
+        return point.Y < clientBounds.Top + Math.Min(CsdTitleBarHeight, Math.Max(1, clientBounds.Height / 8));
     }
 
     private static bool IsFullscreen(Rectangle windowBounds, Rectangle monitorBounds)

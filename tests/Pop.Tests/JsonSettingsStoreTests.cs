@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Pop.Core.Models;
 using Pop.Core.Services;
 
@@ -79,6 +80,40 @@ public sealed class JsonSettingsStoreTests : IDisposable
         Assert.True(settings.HorizontalDominanceRatio >= 1d);
         Assert.True(settings.GlideDurationMs >= 0);
         Assert.True(settings.ThrowVelocityThresholdPxPerSec >= 50d);
+    }
+
+    [Fact]
+    public async Task SaveAsync_PreservesUnknownJsonKeys_AcrossLoadSaveRoundTrip()
+    {
+        Directory.CreateDirectory(_tempDirectory);
+        var settingsPath = Path.Combine(_tempDirectory, "settings.json");
+        await File.WriteAllTextAsync(
+            settingsPath,
+            "{\"Enabled\": false, \"FutureSetting\": \"keep-me\", \"FutureNumber\": 7}");
+        var store = new JsonSettingsStore(_tempDirectory);
+
+        var loaded = await store.LoadAsync();
+        await store.SaveAsync(loaded);
+
+        using var document = JsonDocument.Parse(await File.ReadAllTextAsync(settingsPath));
+        Assert.False(document.RootElement.GetProperty("Enabled").GetBoolean());
+        Assert.Equal("keep-me", document.RootElement.GetProperty("FutureSetting").GetString());
+        Assert.Equal(7, document.RootElement.GetProperty("FutureNumber").GetInt32());
+    }
+
+    [Fact]
+    public async Task SaveAsync_WritesSchemaVersion_AndLoadAsyncToleratesIt()
+    {
+        var store = new JsonSettingsStore(_tempDirectory);
+
+        await store.SaveAsync(AppSettings.Default);
+
+        using var document = JsonDocument.Parse(
+            await File.ReadAllTextAsync(Path.Combine(_tempDirectory, "settings.json")));
+        Assert.Equal(1, document.RootElement.GetProperty("schemaVersion").GetInt32());
+
+        var reloaded = await store.LoadAsync();
+        Assert.Equal(AppSettings.Default, reloaded);
     }
 
     public void Dispose()

@@ -24,9 +24,12 @@ public sealed class X11WindowMover : IWindowMover
             return;
         }
 
+        // Read once per move: the decoration extents are constant for the whole animation.
+        var frameExtents = ReadFrameExtents(windowHandle);
+
         if (plan.Frames.Count == 0)
         {
-            MoveResize(windowHandle, plan.FinalBounds);
+            MoveResize(windowHandle, plan.FinalBounds, frameExtents);
             return;
         }
 
@@ -48,17 +51,29 @@ public sealed class X11WindowMover : IWindowMover
             }
 
             previousBounds = frame.Bounds;
-            MoveResize(windowHandle, frame.Bounds);
+            MoveResize(windowHandle, frame.Bounds, frameExtents);
         }
 
         if (!previousBounds.HasValue || previousBounds.Value != plan.FinalBounds)
         {
-            MoveResize(windowHandle, plan.FinalBounds);
+            MoveResize(windowHandle, plan.FinalBounds, frameExtents);
         }
     }
 
-    private void MoveResize(IntPtr windowHandle, Rectangle bounds)
+    private X11FrameExtents ReadFrameExtents(IntPtr windowHandle)
     {
+        var values = X11PropertyReader.ReadLongArray(_connection, windowHandle, _connection.Atoms.NetFrameExtents);
+        return values.Count >= 4
+            ? new X11FrameExtents(values[0], values[1], values[2], values[3])
+            : X11FrameExtents.None;
+    }
+
+    private void MoveResize(IntPtr windowHandle, Rectangle bounds, X11FrameExtents frameExtents)
+    {
+        // With StaticGravity _NET_MOVERESIZE_WINDOW positions the client window, so inset the
+        // frame-rect target by _NET_FRAME_EXTENTS; otherwise server-side-decorated windows snap
+        // with the title bar pushed under the top panel.
+        var clientBounds = X11FrameGeometry.ToClientBounds(bounds, frameExtents);
         var flagsAndGravity = StaticGravity | MoveResizeFlags | (SourceApplication << 12);
         var ev = new X11Native.XClientMessageEvent
         {
@@ -68,10 +83,10 @@ public sealed class X11WindowMover : IWindowMover
             MessageType = _connection.Atoms.NetMoveresizeWindow,
             Format = 32,
             Data0 = new IntPtr(flagsAndGravity),
-            Data1 = new IntPtr(bounds.X),
-            Data2 = new IntPtr(bounds.Y),
-            Data3 = new IntPtr(Math.Max(1, bounds.Width)),
-            Data4 = new IntPtr(Math.Max(1, bounds.Height))
+            Data1 = new IntPtr(clientBounds.X),
+            Data2 = new IntPtr(clientBounds.Y),
+            Data3 = new IntPtr(Math.Max(1, clientBounds.Width)),
+            Data4 = new IntPtr(Math.Max(1, clientBounds.Height))
         };
 
         lock (_connection.SyncRoot)

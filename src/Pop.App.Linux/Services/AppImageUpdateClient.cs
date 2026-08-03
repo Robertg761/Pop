@@ -50,7 +50,16 @@ internal sealed class AppImageUpdateClient : IUpdateClient
                 pendingUpdate.Version);
         }
 
+        _installer.CleanUpAbandonedDownloads();
+
         var release = await _releaseClient.FetchLatestLinuxReleaseAsync(cancellationToken);
+        if (release is null)
+        {
+            // The AppImage asset is uploaded by a separate workflow shortly after a release;
+            // until it exists there is nothing to update to.
+            return new UpdateDownloadResult(UpdateDownloadOutcome.NoUpdate, "Pop is up to date.");
+        }
+
         if (!AppVersion.TryParse(release.Version, out var latestVersion)
             || !AppVersion.TryParse(CurrentVersion, out var installedVersion))
         {
@@ -92,8 +101,17 @@ internal sealed class AppImageUpdateClient : IUpdateClient
             return false;
         }
 
-        _installer.InstallPreparedUpdate(pendingUpdate);
-        return true;
+        try
+        {
+            _installer.InstallPreparedUpdate(pendingUpdate);
+            return true;
+        }
+        catch
+        {
+            // A missing staged file or a failed installer launch must not crash the app;
+            // the service reports the failure so the user can re-check for updates.
+            return false;
+        }
     }
 
     private static string CreateReadyMessage(string? version)

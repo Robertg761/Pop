@@ -55,13 +55,8 @@ public sealed class SnapDecider(Func<Point, MonitorInfo> monitorLookup) : ISnapD
         var firstIndex = FindFirstRelevantSampleIndex(session.Samples, cutoff);
         if (session.Samples.Count - firstIndex < 2)
         {
+            // Count >= 2 here, so Max(0, Count - 4) always leaves at least two samples.
             firstIndex = Math.Max(0, session.Samples.Count - 4);
-        }
-
-        if (session.Samples.Count - firstIndex < 2)
-        {
-            metrics = SnapDecision.None(SnapRejectionReason.InsufficientSamples, releaseMonitor, lastSample.Position);
-            return false;
         }
 
         var firstSample = session.Samples[firstIndex];

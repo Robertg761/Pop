@@ -28,6 +28,22 @@ public struct AppSettings: Codable, Equatable, Sendable {
 
     public static let `default` = AppSettings()
 
+    /// Returns a copy with numeric fields clamped to safe ranges, mirroring
+    /// `Pop.Core.Models.AppSettings.Normalized()`. Values from a hand-edited or corrupt
+    /// `settings.json` otherwise break gesture qualification and can trap when narrowed
+    /// to 32-bit values at the bridge boundary.
+    public func normalized() -> AppSettings {
+        var settings = self
+        settings.throwVelocityThresholdPxPerSec = throwVelocityThresholdPxPerSec.isFinite
+            ? min(max(throwVelocityThresholdPxPerSec, 50), 100_000)
+            : AppSettings.default.throwVelocityThresholdPxPerSec
+        settings.horizontalDominanceRatio = horizontalDominanceRatio.isFinite
+            ? min(max(horizontalDominanceRatio, 1), 50)
+            : AppSettings.default.horizontalDominanceRatio
+        settings.glideDurationMs = min(max(glideDurationMs, 0), 5_000)
+        return settings
+    }
+
     enum CodingKeys: String, CodingKey {
         case enabled = "Enabled"
         case launchAtStartup = "LaunchAtStartup"

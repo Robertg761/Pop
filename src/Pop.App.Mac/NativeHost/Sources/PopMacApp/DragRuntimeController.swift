@@ -87,12 +87,27 @@ private final class GlobalDragTracker {
         runLoopSource = nil
     }
 
+    private static let machTimebase: mach_timebase_info_data_t = {
+        var info = mach_timebase_info_data_t()
+        mach_timebase_info(&info)
+        return info
+    }()
+
+    // CGEvent timestamps are mach ticks; convert to milliseconds so the monotonic clock
+    // matches the millisecond timestamps the bridge expects for velocity calculations.
+    private static func milliseconds(fromMachTimestamp timestamp: CGEventTimestamp) -> Int64 {
+        let nanoseconds = timestamp * UInt64(machTimebase.numer) / UInt64(machTimebase.denom)
+        return Int64(nanoseconds / 1_000_000)
+    }
+
     private func handle(type: CGEventType, event: CGEvent) {
-        let timestamp = Int64(Date().timeIntervalSince1970 * 1000)
+        let timestamp = Self.milliseconds(fromMachTimestamp: event.timestamp)
         let point = screenCoordinator.pointInTopLeftSpace(from: event.location)
 
         switch type {
         case .leftMouseDown:
+            // A lost mouse-up must not leak a stale session into this unrelated press.
+            activeSession = nil
             let inspection = windowSystem.inspectWindow(atEventLocation: event.location)
             guard inspection.isSupported, let window = inspection.window, let monitor = inspection.monitor else {
                 onRejected?(point, inspection.reason)
@@ -156,6 +171,8 @@ private final class GlobalDragTracker {
 }
 
 final class DiagnosticsLogger {
+    private static let maxLogSizeBytes: Int64 = 5 * 1024 * 1024
+
     private let fileURL: URL
     private let bridgeClient: PopMacBridgeClient
     private let queue = DispatchQueue(label: "Pop.DiagnosticsLogger")
@@ -175,6 +192,7 @@ final class DiagnosticsLogger {
         queue.async {
             do {
                 try FileManager.default.createDirectory(at: fileURL.deletingLastPathComponent(), withIntermediateDirectories: true)
+                Self.rotateIfNeeded(at: fileURL)
                 let data = (line + "\n").data(using: .utf8) ?? Data()
                 if FileManager.default.fileExists(atPath: fileURL.path) {
                     let handle = try FileHandle(forWritingTo: fileURL)
@@ -187,6 +205,17 @@ final class DiagnosticsLogger {
             } catch {
             }
         }
+    }
+
+    private static func rotateIfNeeded(at fileURL: URL) {
+        let attributes = try? FileManager.default.attributesOfItem(atPath: fileURL.path)
+        guard let size = (attributes?[.size] as? NSNumber)?.int64Value, size >= maxLogSizeBytes else {
+            return
+        }
+
+        let rotatedURL = fileURL.appendingPathExtension("1")
+        try? FileManager.default.removeItem(at: rotatedURL)
+        try? FileManager.default.moveItem(at: fileURL, to: rotatedURL)
     }
 }
 
@@ -202,7 +231,10 @@ final class PopRuntimeController {
     private lazy var dragTracker = GlobalDragTracker(windowSystem: windowSystem, screenCoordinator: screenCoordinator)
     private let bridgeClient = PopMacBridgeClient()
     private lazy var diagnosticsLogger = DiagnosticsLogger(directoryURL: settingsStore.directoryURL, bridgeClient: bridgeClient)
+    private static let maxSnapRestoreStates = 64
+
     private var snapRestoreStates: [CFHashCode: SnapRestoreState] = [:]
+    private var snapRestoreOrder: [CFHashCode] = []
     private var permissionMonitor: Timer?
 
     private(set) var settings = AppSettings.default
@@ -370,9 +402,9 @@ final class PopRuntimeController {
             ],
             enabled: settings.enableDiagnostics)
 
-        snapRestoreStates[restoreKey(for: session.window)] = SnapRestoreState(
-            restoreBounds: session.initialBounds,
-            snappedBounds: plan.finalBounds)
+        storeRestoreState(
+            SnapRestoreState(restoreBounds: session.initialBounds, snappedBounds: plan.finalBounds),
+            for: restoreKey(for: session.window))
         animate(window: session.window, frames: plan.frames, finalBounds: plan.finalBounds, index: 0, startedAt: DispatchTime.now())
     }
 
@@ -388,11 +420,11 @@ final class PopRuntimeController {
             previousBounds: restoreState.restoreBounds,
             dragPoint: point,
             workArea: session.currentMonitor.visibleFrame) else {
-            snapRestoreStates.removeValue(forKey: key)
+            removeRestoreState(for: key)
             return nil
         }
 
-        snapRestoreStates.removeValue(forKey: key)
+        removeRestoreState(for: key)
         diagnosticsLogger.write(
             category: "drag-restore",
             message: "Restored a previously snapped window before continuing the drag.",
@@ -408,9 +440,34 @@ final class PopRuntimeController {
         CFHash(window)
     }
 
+    private func storeRestoreState(_ state: SnapRestoreState, for key: CFHashCode) {
+        if snapRestoreStates.updateValue(state, forKey: key) == nil {
+            snapRestoreOrder.append(key)
+        }
+
+        while snapRestoreOrder.count > Self.maxSnapRestoreStates {
+            let evictedKey = snapRestoreOrder.removeFirst()
+            snapRestoreStates.removeValue(forKey: evictedKey)
+        }
+    }
+
+    private func removeRestoreState(for key: CFHashCode) {
+        snapRestoreStates.removeValue(forKey: key)
+        snapRestoreOrder.removeAll { $0 == key }
+    }
+
     private func animate(window: AXUIElement, frames: [BridgeAnimationFrame], finalBounds: DesktopRect, index: Int, startedAt: DispatchTime) {
         guard index < frames.count else {
-            windowSystem.move(window: window, to: finalBounds)
+            if !windowSystem.move(window: window, to: finalBounds) {
+                // The AX element is likely stale (window closed mid-animation); drop its
+                // restore state so the dictionary doesn't accumulate dead entries.
+                removeRestoreState(for: restoreKey(for: window))
+                diagnosticsLogger.write(
+                    category: "window-move-failed",
+                    message: "Applying the final snap bounds failed; the window may have closed.",
+                    fields: ["finalBounds": "\(finalBounds)"],
+                    enabled: settings.enableDiagnostics)
+            }
             return
         }
 

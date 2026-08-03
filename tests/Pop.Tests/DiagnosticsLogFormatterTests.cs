@@ -47,4 +47,27 @@ public sealed class DiagnosticsLogFormatterTests
         Assert.True(document.RootElement.TryGetProperty("fields", out var fields));
         Assert.Single(fields.EnumerateObject());
     }
+
+    [Fact]
+    public void Format_DoesNotSplitSurrogatePair_WhenTruncationLandsOnEmoji()
+    {
+        // 239 chars + a 2-UTF-16-unit emoji: a naive cut at 240 splits the surrogate pair.
+        var diagnosticEvent = new DiagnosticEvent(
+            DateTimeOffset.UtcNow,
+            "drag-release",
+            new string('a', 239) + "\U0001F600",
+            new Dictionary<string, string?>
+            {
+                ["reason"] = new string('b', 179) + "\U0001F600"
+            });
+
+        var json = DiagnosticsLogFormatter.Format(diagnosticEvent);
+        using var document = JsonDocument.Parse(json);
+
+        var message = document.RootElement.GetProperty("message").GetString();
+        Assert.Equal(new string('a', 239), message);
+
+        var reason = document.RootElement.GetProperty("fields").GetProperty("reason").GetString();
+        Assert.Equal(new string('b', 179), reason);
+    }
 }

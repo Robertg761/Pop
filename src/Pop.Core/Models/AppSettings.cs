@@ -1,3 +1,4 @@
+using System.Text.Json;
 using System.Text.Json.Serialization;
 
 namespace Pop.Core.Models;
@@ -9,6 +10,13 @@ namespace Pop.Core.Models;
 public sealed record AppSettings
 {
     public static AppSettings Default { get; } = new();
+
+    /// <summary>
+    /// Version of the persisted settings document. Matches the contract's schemaVersion.
+    /// Tolerated when absent on read (defaults to the current version).
+    /// </summary>
+    [JsonPropertyName("schemaVersion")]
+    public int SchemaVersion { get; init; } = 1;
 
     [JsonPropertyName("Enabled")]
     public bool Enabled { get; init; } = true;
@@ -27,6 +35,13 @@ public sealed record AppSettings
 
     [JsonPropertyName("EnableDiagnostics")]
     public bool EnableDiagnostics { get; init; }
+
+    /// <summary>
+    /// Captures JSON keys written by newer app versions (or the other platform) so they
+    /// survive a load→save round-trip instead of being silently dropped.
+    /// </summary>
+    [JsonExtensionData]
+    public Dictionary<string, JsonElement>? ExtensionData { get; set; }
 
     /// <summary>
     /// Returns a copy with numeric fields clamped to safe ranges. Values loaded from a

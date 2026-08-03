@@ -4,11 +4,13 @@ public struct AppRelease: Equatable, Sendable {
     public let version: String
     public let assetName: String
     public let assetURL: URL
+    public let checksumAssetURL: URL?
 
-    public init(version: String, assetName: String, assetURL: URL) {
+    public init(version: String, assetName: String, assetURL: URL, checksumAssetURL: URL? = nil) {
         self.version = version
         self.assetName = assetName
         self.assetURL = assetURL
+        self.checksumAssetURL = checksumAssetURL
     }
 }
 
@@ -85,7 +87,12 @@ public enum AppReleaseFeedParser {
             throw AppReleaseFeedError.missingMacAsset
         }
 
-        return AppRelease(version: version, assetName: asset.name, assetURL: asset.browserDownloadURL)
+        let checksumAsset = release.assets.first(where: { $0.name == "\(expectedAssetName).sha256" })
+        return AppRelease(
+            version: version,
+            assetName: asset.name,
+            assetURL: asset.browserDownloadURL,
+            checksumAssetURL: checksumAsset?.browserDownloadURL)
     }
 }
 

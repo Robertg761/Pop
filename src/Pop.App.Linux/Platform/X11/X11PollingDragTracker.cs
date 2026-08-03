@@ -9,12 +9,19 @@ namespace Pop.App.Linux.Platform.X11;
 public sealed class X11PollingDragTracker : IDragTracker
 {
     private static readonly TimeSpan PollInterval = TimeSpan.FromMilliseconds(8);
+    // When snapping is disabled we only need to notice the setting flipping back on, so an idle
+    // disabled Pop polls two orders of magnitude slower and skips all window inspection.
+    private static readonly TimeSpan DisabledPollInterval = TimeSpan.FromMilliseconds(250);
     private static readonly TimeSpan StateRefreshInterval = TimeSpan.FromMilliseconds(64);
+    private static readonly TimeSpan StopTimeout = TimeSpan.FromSeconds(5);
     private readonly X11DisplayConnection _connection;
     private readonly IWindowInspector _windowInspector;
     private readonly Func<uint, bool> _isCtrlPressedAccessor;
-    private readonly CancellationTokenSource _disposeCancellation = new();
+    private readonly Func<bool> _isTrackingEnabledAccessor;
+    private CancellationTokenSource? _pollCancellation;
     private Task? _pollingTask;
+    private Task? _stalledPollTask;
+    private bool _disposed;
     private DragSession? _activeSession;
     private bool _wasLeftButtonDown;
     private DateTimeOffset _nextStateRefreshAt;
@@ -22,11 +29,13 @@ public sealed class X11PollingDragTracker : IDragTracker
     public X11PollingDragTracker(
         X11DisplayConnection connection,
         IWindowInspector windowInspector,
-        Func<uint, bool>? isCtrlPressedAccessor = null)
+        Func<uint, bool>? isCtrlPressedAccessor = null,
+        Func<bool>? isTrackingEnabledAccessor = null)
     {
         _connection = connection;
         _windowInspector = windowInspector;
         _isCtrlPressedAccessor = isCtrlPressedAccessor ?? IsCtrlPressed;
+        _isTrackingEnabledAccessor = isTrackingEnabledAccessor ?? (static () => true);
     }
 
     public event EventHandler<DragSessionRejectedEventArgs>? DragRejected;
@@ -39,35 +48,64 @@ public sealed class X11PollingDragTracker : IDragTracker
 
     public void Start()
     {
-        if (_pollingTask is not null)
+        // The cancellation source is created per Start so Stop/Start cycles work; the previous
+        // design cancelled a shared source that could never be rearmed.
+        if (_disposed || _pollingTask is not null || HasStalledPollTask)
         {
             return;
         }
 
-        _pollingTask = Task.Run(() => PollAsync(_disposeCancellation.Token));
+        var pollCancellation = new CancellationTokenSource();
+        _pollCancellation = pollCancellation;
+        _pollingTask = Task.Run(() => PollAsync(pollCancellation.Token));
     }
 
     public void Stop()
     {
-        _disposeCancellation.Cancel();
-        try
+        var pollCancellation = _pollCancellation;
+        var pollingTask = _pollingTask;
+        _pollCancellation = null;
+        _pollingTask = null;
+        pollCancellation?.Cancel();
+
+        if (pollingTask is not null)
         {
-            _pollingTask?.Wait(TimeSpan.FromSeconds(1));
-        }
-        catch (AggregateException)
-        {
+            try
+            {
+                if (!pollingTask.Wait(StopTimeout))
+                {
+                    // Track the runaway task so the host knows it must not free the X11 Display
+                    // underneath it; the cancellation source is intentionally leaked with it.
+                    _stalledPollTask = pollingTask;
+                }
+            }
+            catch (AggregateException)
+            {
+            }
         }
 
-        _pollingTask = null;
+        if (_stalledPollTask is null)
+        {
+            pollCancellation?.Dispose();
+        }
+
         _activeSession = null;
         _wasLeftButtonDown = false;
         _nextStateRefreshAt = DateTimeOffset.MinValue;
     }
 
+    // True while a poll task failed to stop within the timeout and may still touch the display.
+    public bool HasStalledPollTask => _stalledPollTask is { IsCompleted: false };
+
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         Stop();
-        _disposeCancellation.Dispose();
         GC.SuppressFinalize(this);
     }
 
@@ -75,6 +113,14 @@ public sealed class X11PollingDragTracker : IDragTracker
     {
         while (!cancellationToken.IsCancellationRequested)
         {
+            if (!_isTrackingEnabledAccessor())
+            {
+                _activeSession = null;
+                _wasLeftButtonDown = false;
+                await Task.Delay(DisabledPollInterval, cancellationToken);
+                continue;
+            }
+
             // Fail soft on the hot path: an exception from a window inspection or a handler must
             // not fault the polling task, which would silently stop all snapping for the session.
             try
@@ -121,6 +167,11 @@ public sealed class X11PollingDragTracker : IDragTracker
         uint mask;
         lock (_connection.SyncRoot)
         {
+            if (_connection.IsDisposed)
+            {
+                return X11PointerSnapshot.Empty;
+            }
+
             success = X11Native.XQueryPointer(
                 _connection.Display,
                 _connection.RootWindow,

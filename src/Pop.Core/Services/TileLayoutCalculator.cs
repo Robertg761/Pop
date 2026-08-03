@@ -13,6 +13,13 @@ public static class TileLayoutCalculator
         }
 
         var workArea = monitorInfo.WorkArea;
+        if (workArea.Width <= 0 || workArea.Height <= 0)
+        {
+            // A degenerate or negative-size work area (e.g. a monitor mid-reconfiguration)
+            // would otherwise produce a zero-width snap plan downstream.
+            return Rectangle.Empty;
+        }
+
         var leftWidth = workArea.Width / 2;
 
         return target switch

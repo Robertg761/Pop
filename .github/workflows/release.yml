@@ -220,8 +220,85 @@ jobs:
             --noPortable `
             --outputDir .\artifacts\Releases
 
+          if ($LASTEXITCODE -ne 0) {
+            throw "vpk pack failed with exit code $LASTEXITCODE."
+          }
+
           Get-ChildItem .\artifacts\Releases -Filter *-Portable.zip | Remove-Item -Force
 
+      - name: Upload Setup.exe to GitHub release
+        shell: pwsh
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $releaseTag = "v${{ steps.meta.outputs.version }}"
+          $setupAsset = Get-ChildItem .\artifacts\Releases -Filter *-Setup.exe | Select-Object -First 1
+
+          if (-not $setupAsset) {
+            throw 'Unable to find the generated Setup.exe asset.'
+          }
+
+          $setupHash = (Get-FileHash $setupAsset.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+          $checksumPath = "$($setupAsset.FullName).sha256"
+          [System.IO.File]::WriteAllText($checksumPath, "$setupHash  $($setupAsset.Name)`n")
+
+          gh release view $releaseTag --repo "${{ github.repository }}" *> $null
+          if ($LASTEXITCODE -ne 0) {
+            $notesPath = Join-Path $env:RUNNER_TEMP 'release-notes.md'
+            $releaseNotes = @'
+          ## Install notes
+
+          - **Windows**: run `Setup.exe`. SmartScreen may warn because the installer is unsigned - choose "More info" > "Run anyway".
+          - **macOS**: `Pop.app` is **not notarized** (the project has no Apple Developer ID yet), so Gatekeeper blocks the first launch. Double-click it once, then open System Settings > Privacy & Security and click **Open Anyway** (macOS 13/14: right-click > Open). Full steps are in `READ ME FIRST.txt` inside the zip. macOS also forgets the Accessibility permission after each in-app update of unsigned builds - Pop prompts you to re-grant it.
+          - **Linux**: `chmod +x` the AppImage and run it (X11 or KDE Plasma 6 Wayland). Launch output lands in `~/.config/Pop/launch.log` when started from the desktop.
+
+          Every asset has a `<asset>.sha256` companion; verify with `sha256sum -c <asset>.sha256` (Linux) or `shasum -a 256 -c <asset>.sha256` (macOS).
+          '@
+            $releaseNotes = ($releaseNotes -split "`n" | ForEach-Object { $_.TrimStart() }) -join "`n"
+            [System.IO.File]::WriteAllText($notesPath, $releaseNotes)
+
+            $createArgs = @(
+              'release', 'create', $releaseTag, $setupAsset.FullName, $checksumPath,
+              '--repo', "${{ github.repository }}",
+              '--title', "Pop v${{ steps.meta.outputs.version }}",
+              '--target', "${{ github.sha }}",
+              '--notes-file', $notesPath
+            )
+
+            if ("${{ steps.meta.outputs.version }}".Contains('-')) {
+              $createArgs += '--prerelease'
+            }
+
+            & gh @createArgs
+            if ($LASTEXITCODE -ne 0) {
+              & gh release upload $releaseTag $setupAsset.FullName $checksumPath --repo "${{ github.repository }}" --clobber
+              if ($LASTEXITCODE -ne 0) {
+                throw "Unable to create the GitHub release or upload the Windows assets."
+              }
+            }
+          }
+          else {
+            & gh release upload $releaseTag $setupAsset.FullName $checksumPath --repo "${{ github.repository }}" --clobber
+            if ($LASTEXITCODE -ne 0) {
+              throw "Unable to upload the Windows assets to the GitHub release."
+            }
+          }
+
+          $releaseData = gh release view $releaseTag --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
+          $assetsToDelete = @($releaseData.assets | Where-Object {
+            $_.name -ne $setupAsset.Name -and
+            $_.name -ne "$($setupAsset.Name).sha256" -and
+            $_.name -notlike 'Pop-macos-arm64-*.zip*' -and
+            $_.name -notlike 'Pop-macos-arm64-*.dmg*' -and
+            $_.name -notlike 'Pop-linux-x64-*'
+          })
+          foreach ($asset in $assetsToDelete) {
+            & gh release delete-asset $releaseTag $asset.name --repo "${{ github.repository }}" --yes
+          }
+
+      # Runs after the GitHub release exists so installed clients are never offered an
+      # update whose public release assets failed to publish.
       - name: Publish update feed
         shell: pwsh
         env:
@@ -232,7 +309,7 @@ jobs:
           $feedRoot = Join-Path $env:RUNNER_TEMP 'update-feed'
           $feedRepoPrefix = "https://x-access-token:$env:GITHUB_TOKEN@github.com/"
           $feedRepoUrl = "${{ steps.meta.outputs.repo_url }}" -replace '^https://github\.com/', $feedRepoPrefix
-          $feedFiles = @(Get-ChildItem .\artifacts\Releases -File | Where-Object { $_.Name -notlike '*-Setup.exe' -and $_.Name -ne 'assets.win.json' })
+          $feedFiles = @(Get-ChildItem .\artifacts\Releases -File | Where-Object { $_.Name -notlike '*-Setup.exe*' -and $_.Name -ne 'assets.win.json' })
 
           if ($feedFiles.Count -eq 0) {
             throw 'Unable to find update-feed artifacts to publish.'
@@ -301,52 +378,6 @@ jobs:
 
           Pop-Location
 
-      - name: Upload Setup.exe to GitHub release
-        shell: pwsh
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          $releaseTag = "v${{ steps.meta.outputs.version }}"
-          $setupAsset = Get-ChildItem .\artifacts\Releases -Filter *-Setup.exe | Select-Object -First 1
-
-          if (-not $setupAsset) {
-            throw 'Unable to find the generated Setup.exe asset.'
-          }
-
-          gh release view $releaseTag --repo "${{ github.repository }}" *> $null
-          if ($LASTEXITCODE -ne 0) {
-            $createArgs = @(
-              'release', 'create', $releaseTag, $setupAsset.FullName,
-              '--repo', "${{ github.repository }}",
-              '--title', "Pop v${{ steps.meta.outputs.version }}",
-              '--target', "${{ github.sha }}"
-            )
-
-            if ("${{ steps.meta.outputs.version }}".Contains('-')) {
-              $createArgs += '--prerelease'
-            }
-
-            & gh @createArgs
-            if ($LASTEXITCODE -ne 0) {
-              & gh release upload $releaseTag $setupAsset.FullName --repo "${{ github.repository }}" --clobber
-            }
-          }
-          else {
-            & gh release upload $releaseTag $setupAsset.FullName --repo "${{ github.repository }}" --clobber
-          }
-
-          $releaseData = gh release view $releaseTag --repo "${{ github.repository }}" --json assets | ConvertFrom-Json
-          $assetsToDelete = @($releaseData.assets | Where-Object {
-            $_.name -ne $setupAsset.Name -and
-            $_.name -notlike 'Pop-macos-arm64-*.zip' -and
-            $_.name -notlike 'Pop-macos-arm64-*.dmg' -and
-            $_.name -notlike 'Pop-linux-x64-*'
-          })
-          foreach ($asset in $assetsToDelete) {
-            & gh release delete-asset $releaseTag $asset.name --repo "${{ github.repository }}" --yes
-          }
-
       - name: Upload release artifacts
         if: ${{ always() }}
         uses: actions/upload-artifact@v6
@@ -390,9 +421,43 @@ jobs:
           export DYLD_FALLBACK_LIBRARY_PATH="$PWD/artifacts/mac/bridge${DYLD_FALLBACK_LIBRARY_PATH:+:$DYLD_FALLBACK_LIBRARY_PATH}"
           swift test --package-path src/Pop.App.Mac/NativeHost
 
+      # Imports a Developer ID certificate into a throwaway keychain when the signing
+      # secrets are configured; otherwise the packaging scripts fall back to ad-hoc signing.
+      - name: Import Developer ID certificate
+        shell: bash
+        env:
+          MACOS_CERTIFICATE_P12_BASE64: ${{ secrets.MACOS_CERTIFICATE_P12_BASE64 }}
+          MACOS_CERTIFICATE_PASSWORD: ${{ secrets.MACOS_CERTIFICATE_PASSWORD }}
+        run: |
+          if [[ -z "$MACOS_CERTIFICATE_P12_BASE64" ]]; then
+            echo "No signing certificate secrets configured; the app will be ad-hoc signed."
+            exit 0
+          fi
+
+          keychain_path="$RUNNER_TEMP/pop-signing.keychain-db"
+          keychain_password="$(uuidgen)"
+          certificate_path="$RUNNER_TEMP/pop-signing-certificate.p12"
+
+          printf '%s' "$MACOS_CERTIFICATE_P12_BASE64" | base64 --decode > "$certificate_path"
+
+          security create-keychain -p "$keychain_password" "$keychain_path"
+          security set-keychain-settings -lut 21600 "$keychain_path"
+          security unlock-keychain -p "$keychain_password" "$keychain_path"
+          security import "$certificate_path" -P "$MACOS_CERTIFICATE_PASSWORD" -A -t cert -f pkcs12 -k "$keychain_path"
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$keychain_password" "$keychain_path" > /dev/null
+          security list-keychains -d user -s "$keychain_path" login.keychain-db
+
+          rm -f "$certificate_path"
+
       - name: Package macOS app
         id: package
         shell: bash
+        env:
+          POP_MAC_CODESIGN_IDENTITY: ${{ secrets.POP_MAC_CODESIGN_IDENTITY }}
+          POP_MAC_NOTARY_PROFILE: ${{ secrets.POP_MAC_NOTARY_PROFILE }}
+          POP_MAC_NOTARY_APPLE_ID: ${{ secrets.POP_MAC_NOTARY_APPLE_ID }}
+          POP_MAC_NOTARY_TEAM_ID: ${{ secrets.POP_MAC_NOTARY_TEAM_ID }}
+          POP_MAC_NOTARY_PASSWORD: ${{ secrets.POP_MAC_NOTARY_PASSWORD }}
         run: |
           package_output="$(./scripts/package-mac-release.sh)"
           echo "$package_output"
@@ -428,14 +493,32 @@ jobs:
             exit 1
           fi
 
+          for asset in "$zip_asset" "$dmg_asset"; do
+            (cd "$(dirname "$asset")" && shasum -a 256 "$(basename "$asset")" > "$(basename "$asset").sha256")
+          done
+
+          upload_assets=("$zip_asset" "$zip_asset.sha256" "$dmg_asset" "$dmg_asset.sha256")
+
           if gh release view "$release_tag" --repo "${{ github.repository }}" >/dev/null 2>&1; then
-            gh release upload "$release_tag" "$zip_asset" "$dmg_asset" --repo "${{ github.repository }}" --clobber
+            gh release upload "$release_tag" "${upload_assets[@]}" --repo "${{ github.repository }}" --clobber
           else
+            notes_path="${RUNNER_TEMP}/release-notes.md"
+            cat > "$notes_path" <<'NOTES_EOF'
+          ## Install notes
+
+          - **Windows**: run `Setup.exe`. SmartScreen may warn because the installer is unsigned - choose "More info" > "Run anyway".
+          - **macOS**: `Pop.app` is **not notarized** (the project has no Apple Developer ID yet), so Gatekeeper blocks the first launch. Double-click it once, then open System Settings > Privacy & Security and click **Open Anyway** (macOS 13/14: right-click > Open). Full steps are in `READ ME FIRST.txt` inside the zip. macOS also forgets the Accessibility permission after each in-app update of unsigned builds - Pop prompts you to re-grant it.
+          - **Linux**: `chmod +x` the AppImage and run it (X11 or KDE Plasma 6 Wayland). Launch output lands in `~/.config/Pop/launch.log` when started from the desktop.
+
+          Every asset has a `<asset>.sha256` companion; verify with `sha256sum -c <asset>.sha256` (Linux) or `shasum -a 256 -c <asset>.sha256` (macOS).
+          NOTES_EOF
+
             create_args=(
-              release create "$release_tag" "$zip_asset" "$dmg_asset"
+              release create "$release_tag" "${upload_assets[@]}"
               --repo "${{ github.repository }}"
               --title "Pop v${{ steps.meta.outputs.version }}"
               --target "${{ github.sha }}"
+              --notes-file "$notes_path"
             )
 
             if [[ "${{ steps.meta.outputs.version }}" == *-* ]]; then
@@ -443,7 +526,7 @@ jobs:
             fi
 
             if ! gh "${create_args[@]}"; then
-              gh release upload "$release_tag" "$zip_asset" "$dmg_asset" --repo "${{ github.repository }}" --clobber
+              gh release upload "$release_tag" "${upload_assets[@]}" --repo "${{ github.repository }}" --clobber
             fi
           fi
 
@@ -457,10 +540,16 @@ jobs:
           release_tag = sys.argv[2]
           repo = sys.argv[3]
           keep_assets = {sys.argv[4], sys.argv[5]}
+          keep_assets |= {name + ".sha256" for name in tuple(keep_assets)}
 
           for asset in release.get("assets", []):
               name = asset.get("name", "")
-              if name in keep_assets or name.endswith("-Setup.exe") or name.startswith("Pop-linux-x64-"):
+              if (
+                  name in keep_assets
+                  or name.endswith("-Setup.exe")
+                  or name.endswith("-Setup.exe.sha256")
+                  or name.startswith("Pop-linux-x64-")
+              ):
                   continue
 
               subprocess.run(
@@ -475,3 +564,12 @@ jobs:
         with:
           name: pop-release-macos
           path: artifacts/mac/release/*
+
+      - name: Remove signing keychain
+        if: ${{ always() }}
+        shell: bash
+        run: |
+          keychain_path="$RUNNER_TEMP/pop-signing.keychain-db"
+          if [[ -f "$keychain_path" ]]; then
+            security delete-keychain "$keychain_path"
+          fi

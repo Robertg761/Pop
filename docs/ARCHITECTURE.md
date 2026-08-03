@@ -67,7 +67,7 @@ Treat non-Plasma Wayland as out of scope until a concrete compositor story exist
 
 - Windows: Velopack against the `update-feed` branch
 - macOS: GitHub Releases download + prepared install (writable Applications install required)
-- Linux: package/AppImage distribution; no in-app updater parity yet
+- Linux: GitHub Releases download + staged AppImage replacement (writable AppImage location required); tarball builds update manually
 
 Shell/update UI is intentionally *not* shared across toolkits. Prefer matching UX, not a shared UI framework.
 

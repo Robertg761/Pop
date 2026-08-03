@@ -8,6 +8,13 @@ namespace Pop.App.Windows.Platform.Windowing;
 
 public sealed class Win32WindowMover : IWindowMover
 {
+    private readonly Action<string>? _onMoveFailure;
+
+    public Win32WindowMover(Action<string>? onMoveFailure = null)
+    {
+        _onMoveFailure = onMoveFailure;
+    }
+
     public async Task MoveWindowAsync(IntPtr windowHandle, AnimationPlan plan, CancellationToken cancellationToken = default)
     {
         if (windowHandle == IntPtr.Zero || plan.FinalBounds == Rectangle.Empty)
@@ -17,7 +24,7 @@ public sealed class Win32WindowMover : IWindowMover
 
         if (plan.Frames.Count == 0)
         {
-            MoveWindowAsyncSafe(windowHandle, plan.FinalBounds);
+            MoveWindowCore(windowHandle, plan.FinalBounds);
             return;
         }
 
@@ -39,28 +46,49 @@ public sealed class Win32WindowMover : IWindowMover
             }
 
             previousBounds = frame.Bounds;
-            MoveWindowAsyncSafe(windowHandle, frame.Bounds);
+            MoveWindowCore(windowHandle, frame.Bounds);
         }
 
         if (!previousBounds.HasValue || previousBounds.Value != plan.FinalBounds)
         {
-            MoveWindowAsyncSafe(windowHandle, plan.FinalBounds);
+            MoveWindowCore(windowHandle, plan.FinalBounds);
         }
+    }
+
+    /// <summary>
+    /// Synchronously issues a single (non-blocking, posted) move without any animation frames,
+    /// for callers that must stay off async paths — e.g. the in-drag restore.
+    /// </summary>
+    public bool MoveWindowImmediately(IntPtr windowHandle, Rectangle bounds)
+    {
+        if (windowHandle == IntPtr.Zero || bounds == Rectangle.Empty)
+        {
+            return false;
+        }
+
+        return MoveWindowCore(windowHandle, bounds);
     }
 
     // Reposition via SetWindowPos with SWP_ASYNCWINDOWPOS so the call never blocks on the
     // target window's message loop. The original MoveWindow sent WM_WINDOWPOSCHANGING
     // synchronously, which could freeze the caller — including the low-level mouse hook thread
     // during an in-drag restore — if the target application was hung.
-    private static void MoveWindowAsyncSafe(IntPtr windowHandle, Rectangle bounds)
+    private bool MoveWindowCore(IntPtr windowHandle, Rectangle bounds)
     {
-        NativeMethods.SetWindowPos(
-            windowHandle,
-            IntPtr.Zero,
-            bounds.X,
-            bounds.Y,
-            bounds.Width,
-            bounds.Height,
-            NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate | NativeMethods.SwpAsyncWindowPos);
+        if (NativeMethods.SetWindowPos(
+                windowHandle,
+                IntPtr.Zero,
+                bounds.X,
+                bounds.Y,
+                bounds.Width,
+                bounds.Height,
+                NativeMethods.SwpNoZOrder | NativeMethods.SwpNoActivate | NativeMethods.SwpAsyncWindowPos))
+        {
+            return true;
+        }
+
+        var error = System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+        _onMoveFailure?.Invoke($"SetWindowPos failed for window 0x{windowHandle:X} (Win32 error {error}).");
+        return false;
     }
 }

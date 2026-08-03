@@ -18,6 +18,7 @@ internal sealed class UpdateService : IUpdateService
     private Task? _backgroundTask;
     private CancellationTokenSource? _backgroundCancellation;
     private bool _started;
+    private volatile bool _disposed;
 
     public UpdateService(
         IUpdateClient? updateClient = null,
@@ -65,7 +66,7 @@ internal sealed class UpdateService : IUpdateService
     {
         if (!_updateClient.PreparePendingUpdateAndRestart())
         {
-            PublishState(CreateInitialState());
+            PublishState(CreatePendingUpdateUnavailableState());
             return;
         }
 
@@ -74,6 +75,12 @@ internal sealed class UpdateService : IUpdateService
 
     public void Dispose()
     {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
         _backgroundCancellation?.Cancel();
         _disposeCancellation.Cancel();
         var checksCompleted = GetChecksCompletedTask();
@@ -113,6 +120,11 @@ internal sealed class UpdateService : IUpdateService
 
     private async Task CheckForUpdatesInternalAsync(CancellationToken cancellationToken)
     {
+        if (_disposed)
+        {
+            return;
+        }
+
         BeginTrackedCheck();
         try
         {
@@ -122,6 +134,7 @@ internal sealed class UpdateService : IUpdateService
             await _checkGate.WaitAsync(effectiveCancellation);
             try
             {
+                var previousState = CurrentState;
                 PublishState(CreateCheckingState());
 
                 UpdateDownloadResult result;
@@ -131,6 +144,8 @@ internal sealed class UpdateService : IUpdateService
                 }
                 catch (OperationCanceledException) when (effectiveCancellation.IsCancellationRequested)
                 {
+                    // Restore a terminal state so the Check button isn't left disabled.
+                    PublishState(CreateStateAfterCancelledCheck(previousState));
                     return;
                 }
                 catch (Exception exception)
@@ -245,6 +260,28 @@ internal sealed class UpdateService : IUpdateService
             version,
             CanCheck: true,
             CanInstall: true);
+    }
+
+    private UpdateState CreateStateAfterCancelledCheck(UpdateState previousState)
+    {
+        return previousState.Status is UpdateStatus.Checking or UpdateStatus.Downloading
+            ? CreateInitialState()
+            : previousState;
+    }
+
+    private UpdateState CreatePendingUpdateUnavailableState()
+    {
+        if (!_updateClient.IsSupported)
+        {
+            return CreateUnsupportedState();
+        }
+
+        return new UpdateState(
+            UpdateStatus.Error,
+            _updateClient.CurrentVersion,
+            "The downloaded update is no longer available. Check for updates to download it again.",
+            CanCheck: true,
+            CanInstall: false);
     }
 
     private static string CreateDownloadMessage(string? version, int percentage)

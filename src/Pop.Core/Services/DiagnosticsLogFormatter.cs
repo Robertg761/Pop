@@ -38,6 +38,13 @@ public static class DiagnosticsLogFormatter
             return value;
         }
 
+        // Back off one char if the cut would split a surrogate pair: a dangling high
+        // surrogate is invalid UTF-16 and serializes as U+FFFD.
+        if (char.IsHighSurrogate(value[maxLength - 1]) && char.IsLowSurrogate(value[maxLength]))
+        {
+            return value[..(maxLength - 1)];
+        }
+
         return value[..maxLength];
     }
 

@@ -26,6 +26,21 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         }
         runtime.start()
         updateService.start()
+        presentOnboardingIfPermissionMissing()
+    }
+
+    // A fresh install is enabled by default but has no Accessibility permission, and
+    // nothing else prompts until the user finds the toggle. Trigger the system prompt
+    // once and show the onboarding window so first launch offers guidance.
+    private func presentOnboardingIfPermissionMissing() {
+        guard runtime.settings.enabled && runtime.permissionState != .granted else {
+            return
+        }
+
+        runtime.refreshAccessibility(prompt: true)
+        if runtime.permissionState != .granted {
+            onboardingWindowController.present()
+        }
     }
 
     func applicationWillTerminate(_ notification: Notification) {

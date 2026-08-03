@@ -3,9 +3,19 @@ using Pop.App.Windows.Platform.Interop;
 using Pop.Core.Models;
 using Pop.Core.Services;
 using Pop.Platform.Abstractions.Windowing;
-using Forms = System.Windows.Forms;
 
 namespace Pop.App.Windows.Platform.Windowing;
+
+/// <summary>
+/// Non-client metrics (already scaled to the target window's DPI) used by the caption-band
+/// heuristic when a window doesn't answer WM_NCHITTEST.
+/// </summary>
+public readonly record struct CaptionMetrics(
+    int FrameBorderWidth,
+    int FrameBorderHeight,
+    int CaptionHeight,
+    int CaptionButtonWidth,
+    int SmallIconWidth);
 
 public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWindowInspector
 {
@@ -134,27 +144,26 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
 
         return succeeded != IntPtr.Zero
             ? result.ToInt32() == NativeMethods.HtCaption
-            : IsLikelyCaptionHit(bounds, screenPoint);
+            : IsLikelyCaptionHit(bounds, screenPoint, GetCaptionMetrics(windowHandle));
     }
 
-    private static bool IsLikelyCaptionHit(Rectangle bounds, Point screenPoint)
+    private static bool IsLikelyCaptionHit(Rectangle bounds, Point screenPoint, CaptionMetrics metrics)
     {
         if (bounds == Rectangle.Empty || !bounds.Contains(screenPoint))
         {
             return false;
         }
 
-        var frameBorderSize = Forms.SystemInformation.FrameBorderSize;
-        var captionHeight = Math.Max(1, Forms.SystemInformation.CaptionHeight);
-        var captionButtonWidth = Math.Max(1, Forms.SystemInformation.CaptionButtonSize.Width);
-        var systemMenuWidth = Math.Max(captionButtonWidth, Forms.SystemInformation.SmallIconSize.Width + frameBorderSize.Width);
-        var captionTop = bounds.Top + frameBorderSize.Height;
+        var captionHeight = Math.Max(1, metrics.CaptionHeight);
+        var captionButtonWidth = Math.Max(1, metrics.CaptionButtonWidth);
+        var systemMenuWidth = Math.Max(captionButtonWidth, metrics.SmallIconWidth + metrics.FrameBorderWidth);
+        var captionTop = bounds.Top + metrics.FrameBorderHeight;
         var captionBandHeight = Math.Max(
             captionHeight,
             Math.Min(72, Math.Max(captionHeight, bounds.Height / 6)));
         var captionBottom = Math.Min(bounds.Bottom, captionTop + captionBandHeight);
-        var captionLeft = bounds.Left + frameBorderSize.Width + systemMenuWidth;
-        var captionRight = bounds.Right - frameBorderSize.Width;
+        var captionLeft = bounds.Left + metrics.FrameBorderWidth + systemMenuWidth;
+        var captionRight = bounds.Right - metrics.FrameBorderWidth;
 
         if (captionBottom <= captionTop || captionRight <= captionLeft)
         {
@@ -172,6 +181,50 @@ public sealed class WindowInspector(WindowEligibilityEvaluator evaluator) : IWin
                screenPoint.Y < captionBottom &&
                screenPoint.X >= captionLeft &&
                screenPoint.X < usableCaptionRight;
+    }
+
+    // Under PerMonitorV2 the WinForms SystemInformation metrics are system-DPI only, which
+    // halves the caption band on a 200% monitor; query the metrics at the target window's DPI.
+    private static CaptionMetrics GetCaptionMetrics(IntPtr windowHandle)
+    {
+        var dpi = TryGetWindowDpi(windowHandle);
+        var paddedBorder = GetSystemMetric(NativeMethods.SmCxPaddedBorder, dpi);
+
+        return new CaptionMetrics(
+            GetSystemMetric(NativeMethods.SmCxFrame, dpi) + paddedBorder,
+            GetSystemMetric(NativeMethods.SmCyFrame, dpi) + paddedBorder,
+            GetSystemMetric(NativeMethods.SmCyCaption, dpi),
+            GetSystemMetric(NativeMethods.SmCxSize, dpi),
+            GetSystemMetric(NativeMethods.SmCxSmIcon, dpi));
+    }
+
+    private static uint TryGetWindowDpi(IntPtr windowHandle)
+    {
+        try
+        {
+            // Available from Windows 10 1607; zero means the handle was invalid.
+            return NativeMethods.GetDpiForWindow(windowHandle);
+        }
+        catch (EntryPointNotFoundException)
+        {
+            return 0;
+        }
+    }
+
+    private static int GetSystemMetric(int index, uint dpi)
+    {
+        if (dpi != 0)
+        {
+            try
+            {
+                return NativeMethods.GetSystemMetricsForDpi(index, dpi);
+            }
+            catch (EntryPointNotFoundException)
+            {
+            }
+        }
+
+        return NativeMethods.GetSystemMetrics(index);
     }
 
     private static uint GetProcessId(IntPtr windowHandle)

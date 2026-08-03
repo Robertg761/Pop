@@ -16,6 +16,8 @@ internal sealed class X11Atoms
         NetWmStateHidden = Intern(display, "_NET_WM_STATE_HIDDEN");
         NetWmStateMaximizedHorz = Intern(display, "_NET_WM_STATE_MAXIMIZED_HORZ");
         NetWmStateMaximizedVert = Intern(display, "_NET_WM_STATE_MAXIMIZED_VERT");
+        NetWmStrut = Intern(display, "_NET_WM_STRUT");
+        NetWmStrutPartial = Intern(display, "_NET_WM_STRUT_PARTIAL");
         NetWmWindowType = Intern(display, "_NET_WM_WINDOW_TYPE");
         NetWmWindowTypeNormal = Intern(display, "_NET_WM_WINDOW_TYPE_NORMAL");
         NetWorkarea = Intern(display, "_NET_WORKAREA");
@@ -45,6 +47,10 @@ internal sealed class X11Atoms
     public IntPtr NetWmStateMaximizedHorz { get; }
 
     public IntPtr NetWmStateMaximizedVert { get; }
+
+    public IntPtr NetWmStrut { get; }
+
+    public IntPtr NetWmStrutPartial { get; }
 
     public IntPtr NetWmWindowType { get; }
 

@@ -65,6 +65,64 @@ public sealed class UpdateServiceTests
     }
 
     [Fact]
+    public void ApplyPendingUpdateAndRestart_PublishesErrorWhenPendingUpdateUnavailable()
+    {
+        var client = new FakeUpdateClient();
+        var shutdown = new FakeShutdownHandler();
+        using var service = new UpdateService(client, shutdown, TimeSpan.FromDays(1), TimeSpan.FromDays(1));
+
+        service.ApplyPendingUpdateAndRestart();
+
+        Assert.Equal(0, shutdown.ShutdownCalls);
+        Assert.Equal(UpdateStatus.Error, service.CurrentState.Status);
+        Assert.True(service.CurrentState.CanCheck);
+        Assert.Contains("no longer available", service.CurrentState.Message);
+    }
+
+    [Fact]
+    public async Task CheckNowAsync_CancelledCheckRestoresTerminalState()
+    {
+        using var cancellation = new CancellationTokenSource();
+        var client = new FakeUpdateClient
+        {
+            CheckOverride = token =>
+            {
+                cancellation.Cancel();
+                token.ThrowIfCancellationRequested();
+                return Task.FromResult(new UpdateDownloadResult(UpdateDownloadOutcome.NoUpdate, "unused"));
+            }
+        };
+        using var service = new UpdateService(client, new FakeShutdownHandler(), TimeSpan.FromDays(1), TimeSpan.FromDays(1));
+
+        await service.CheckNowAsync(cancellation.Token);
+
+        Assert.Equal(UpdateStatus.Idle, service.CurrentState.Status);
+        Assert.True(service.CurrentState.CanCheck);
+    }
+
+    [Fact]
+    public async Task CheckNowAsync_StaleProgressAfterTerminalStateIsIgnored()
+    {
+        var client = new FakeUpdateClient
+        {
+            Result = new UpdateDownloadResult(
+                UpdateDownloadOutcome.ReadyToInstall,
+                "Update v1.1.0 is ready to install.",
+                "1.1.0")
+        };
+        using var service = new UpdateService(client, new FakeShutdownHandler(), TimeSpan.FromDays(1), TimeSpan.FromDays(1));
+
+        await service.CheckNowAsync();
+        Assert.Equal(UpdateStatus.ReadyToInstall, service.CurrentState.Status);
+
+        // Simulate a late Velopack progress callback arriving after the check finished.
+        client.CapturedProgress!(new UpdateDownloadProgress("1.1.0", 99));
+
+        Assert.Equal(UpdateStatus.ReadyToInstall, service.CurrentState.Status);
+        Assert.True(service.CurrentState.CanInstall);
+    }
+
+    [Fact]
     public async Task CheckNowAsync_UnsupportedClientLeavesUnsupportedState()
     {
         var client = new FakeUpdateClient
@@ -94,16 +152,26 @@ public sealed class UpdateServiceTests
 
         public IReadOnlyList<UpdateDownloadProgress> ProgressUpdates { get; init; } = [];
 
+        public Func<CancellationToken, Task<UpdateDownloadResult>>? CheckOverride { get; init; }
+
         public int CheckCalls { get; private set; }
 
         public int PrepareCalls { get; private set; }
+
+        public Action<UpdateDownloadProgress>? CapturedProgress { get; private set; }
 
         public TaskCompletionSource<bool> Checked { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         public Task<UpdateDownloadResult> CheckForUpdatesAndDownloadAsync(Action<UpdateDownloadProgress> progress, CancellationToken cancellationToken)
         {
             CheckCalls++;
+            CapturedProgress = progress;
             Checked.TrySetResult(true);
+
+            if (CheckOverride is not null)
+            {
+                return CheckOverride(cancellationToken);
+            }
 
             if (!IsSupported)
             {

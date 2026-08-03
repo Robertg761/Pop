@@ -35,7 +35,7 @@ public static class MacBridgeRuntime
         }
 
         var decider = new SnapDecider(point => LookupMonitor(point, availableMonitors, context.CurrentMonitor.ToManaged()));
-        var decision = decider.Decide(session, settings.ToManaged());
+        var decision = decider.Decide(session, settings.ToManaged().Normalized());
         return decision.ToDto();
     }
 

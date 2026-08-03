@@ -25,7 +25,7 @@ public final class AppSettingsStore: @unchecked Sendable {
         }
 
         let data = try Data(contentsOf: fileURL)
-        return try decoder.decode(AppSettings.self, from: data)
+        return try decoder.decode(AppSettings.self, from: data).normalized()
     }
 
     public func save(_ settings: AppSettings) throws {

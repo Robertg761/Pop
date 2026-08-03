@@ -1,6 +1,6 @@
 {
   "schemaVersion": 1,
-  "description": "Canonical settings.json contract shared by Windows, macOS, and Linux. Keep Swift CodingKeys and C# AppSettings in sync with this file.",
+  "description": "Canonical settings.json contract shared by Windows, macOS, and Linux. Keep Swift CodingKeys and C# AppSettings in sync with this file. Persisted files additionally carry a 'schemaVersion' field matching this contract's schemaVersion; readers must tolerate it and preserve unknown keys across a load/save round-trip.",
   "fileName": "settings.json",
   "jsonPropertyNames": [
     "Enabled",

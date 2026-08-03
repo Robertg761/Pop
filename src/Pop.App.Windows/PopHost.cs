@@ -1,5 +1,6 @@
 using System.Drawing;
 using Pop.App.Windows.Platform.Input;
+using Pop.App.Windows.Platform.Interop;
 using Pop.App.Windows.Platform.Startup;
 using Pop.App.Windows.Platform.Windowing;
 using Pop.App.Windows.Services;
@@ -24,10 +25,14 @@ public sealed class PopHost : IDisposable
     private readonly IWindowInspector _windowInspector;
     private readonly QualifiedSnapPlanner _snapPlanner;
     private readonly IWindowSnapBoundsCalculator _snapBoundsCalculator;
-    private readonly IWindowMover _windowMover;
+    private readonly Win32WindowMover _windowMover;
     private readonly DiagnosticsLogService _diagnosticsLogService = new();
     private readonly CancellationTokenSource _disposeCancellation = new();
+    // Guards _snapRestoreStates and _activeGlides: drag events arrive on the tracker's
+    // processing thread while glide continuations complete on the thread pool.
+    private readonly object _stateLock = new();
     private readonly Dictionary<IntPtr, SnapRestoreState> _snapRestoreStates = [];
+    private readonly Dictionary<IntPtr, CancellationTokenSource> _activeGlides = [];
     private readonly Forms.NotifyIcon _notifyIcon;
     private readonly Icon _trayIcon;
     private readonly Forms.ToolStripMenuItem _enabledMenuItem;
@@ -50,9 +55,11 @@ public sealed class PopHost : IDisposable
         _windowInspector = new WindowInspector(new WindowEligibilityEvaluator());
         _snapPlanner = new QualifiedSnapPlanner(new SnapDecider(_windowInspector.InspectMonitorAt));
         _snapBoundsCalculator = new WindowSnapBoundsCalculator();
-        _windowMover = new Win32WindowMover();
+        _windowMover = new Win32WindowMover(message => LogDiagnostics("window-move", message));
 
-        _dragTracker = new MouseHookDragTracker(_windowInspector);
+        _dragTracker = new MouseHookDragTracker(
+            _windowInspector,
+            diagnostics: message => LogDiagnostics("mouse-hook", message));
         _dragTracker.DragRejected += OnDragRejected;
         _dragTracker.DragStarted += OnDragStarted;
         _dragTracker.DragUpdated += OnDragUpdated;
@@ -69,7 +76,7 @@ public sealed class PopHost : IDisposable
             Enabled = false
         };
         _checkForUpdatesMenuItem = new Forms.ToolStripMenuItem("Check For Updates", null, async (_, _) => await CheckForUpdatesAsync());
-        _installUpdateMenuItem = new Forms.ToolStripMenuItem("Install Update", null, (_, _) => _updateService.ApplyPendingUpdateAndRestart())
+        _installUpdateMenuItem = new Forms.ToolStripMenuItem("Install Update", null, (_, _) => InstallPendingUpdate())
         {
             Visible = false
         };
@@ -111,10 +118,20 @@ public sealed class PopHost : IDisposable
     public async Task InitializeAsync()
     {
         _settings = await _settingsStore.LoadAsync(_disposeCancellation.Token);
-        _startupRegistration.TrySetLaunchAtStartup(_settings.LaunchAtStartup);
+        if (!_startupRegistration.TrySetLaunchAtStartup(_settings.LaunchAtStartup))
+        {
+            LogDiagnostics(
+                "startup",
+                "Couldn't apply the launch-at-startup registration; the saved setting may not match the OS state.",
+                new Dictionary<string, string?>
+                {
+                    ["launchAtStartup"] = _settings.LaunchAtStartup.ToString()
+                });
+        }
+
         UpdateMenuState();
         await _updateService.StartAsync(_disposeCancellation.Token);
-        _dragTracker.Start();
+        SyncDragTrackerWithSettings();
     }
 
     public void Dispose()
@@ -145,6 +162,10 @@ public sealed class PopHost : IDisposable
     private void OnDragStarted(object? sender, DragSessionEventArgs e)
     {
         e.Session.CurrentPredictedTarget = SnapTarget.None;
+
+        // A re-grab must win immediately: any glide still animating this window would keep
+        // fighting the user's drag with its remaining frames.
+        CancelActiveGlide(e.Session.WindowHandle);
 
         LogDiagnostics("drag-start", "Started tracking a potential throw.", new Dictionary<string, string?>
         {
@@ -226,13 +247,94 @@ public sealed class PopHost : IDisposable
             "Snap qualified and animation plan generated.",
             SnapDiagnosticFields.ForQualifiedRelease(session, plan));
 
-        await _windowMover.MoveWindowAsync(session.WindowHandle, plan.AnimationPlan, _disposeCancellation.Token);
-        _snapRestoreStates[session.WindowHandle] = new SnapRestoreState(session.InitialBounds, plan.AnimationPlan.FinalBounds);
+        // Record the restore state up front (not after the glide) so a re-grab mid-animation
+        // can still unsnap, and register the glide so a new drag on this window can cancel it.
+        var glideCancellation = CancellationTokenSource.CreateLinkedTokenSource(_disposeCancellation.Token);
+        lock (_stateLock)
+        {
+            PruneDeadRestoreStatesLocked();
+            _snapRestoreStates[session.WindowHandle] = new SnapRestoreState(session.InitialBounds, plan.AnimationPlan.FinalBounds);
+            _activeGlides[session.WindowHandle] = glideCancellation;
+        }
+
+        try
+        {
+            await _windowMover.MoveWindowAsync(session.WindowHandle, plan.AnimationPlan, glideCancellation.Token);
+        }
+        catch (OperationCanceledException) when (!_disposeCancellation.IsCancellationRequested)
+        {
+            // The user re-grabbed the window mid-glide; the new drag owns it now.
+        }
+        finally
+        {
+            lock (_stateLock)
+            {
+                if (_activeGlides.TryGetValue(session.WindowHandle, out var current) && ReferenceEquals(current, glideCancellation))
+                {
+                    _activeGlides.Remove(session.WindowHandle);
+                }
+            }
+
+            glideCancellation.Dispose();
+        }
+    }
+
+    private void CancelActiveGlide(IntPtr windowHandle)
+    {
+        CancellationTokenSource? glideCancellation;
+        lock (_stateLock)
+        {
+            _activeGlides.TryGetValue(windowHandle, out glideCancellation);
+        }
+
+        try
+        {
+            glideCancellation?.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // The glide finished and disposed its cancellation source between lookup and Cancel.
+        }
+    }
+
+    private void PruneDeadRestoreStatesLocked()
+    {
+        List<IntPtr>? deadHandles = null;
+        foreach (var handle in _snapRestoreStates.Keys)
+        {
+            if (!NativeMethods.IsWindow(handle))
+            {
+                (deadHandles ??= []).Add(handle);
+            }
+        }
+
+        if (deadHandles is null)
+        {
+            return;
+        }
+
+        foreach (var handle in deadHandles)
+        {
+            _snapRestoreStates.Remove(handle);
+        }
     }
 
     private bool TryRestorePreviousSnap(DragSession session)
     {
-        if (!_snapRestoreStates.TryGetValue(session.WindowHandle, out var restoreState) || session.Samples.Count == 0)
+        SnapRestoreState restoreState;
+        lock (_stateLock)
+        {
+            if (!_snapRestoreStates.TryGetValue(session.WindowHandle, out restoreState) || session.Samples.Count == 0)
+            {
+                return false;
+            }
+
+            // The restore state is consumed (or discarded) by this attempt either way.
+            _snapRestoreStates.Remove(session.WindowHandle);
+        }
+
+        // HWNDs get recycled: never apply a restore rect recorded for a window that has closed.
+        if (!NativeMethods.IsWindow(session.WindowHandle))
         {
             return false;
         }
@@ -246,28 +348,12 @@ public sealed class PopHost : IDisposable
             session.CurrentMonitorInfo.WorkArea,
             out var restoreBounds))
         {
-            _snapRestoreStates.Remove(session.WindowHandle);
             return false;
         }
 
-        _snapRestoreStates.Remove(session.WindowHandle);
-        try
+        // Single-frame move issued synchronously; the mover logs SetWindowPos failures itself.
+        if (!_windowMover.MoveWindowImmediately(session.WindowHandle, restoreBounds))
         {
-            _windowMover.MoveWindowAsync(
-                session.WindowHandle,
-                WindowAnimator.CreateImmediatePlan(restoreBounds),
-                _disposeCancellation.Token).GetAwaiter().GetResult();
-        }
-        catch (OperationCanceledException)
-        {
-            return false;
-        }
-        catch (Exception exception)
-        {
-            LogDiagnostics(
-                "drag-restore",
-                "Failed to restore a previously snapped window.",
-                SnapDiagnosticFields.ForRestoreFailure(session.WindowHandle, exception));
             return false;
         }
 
@@ -301,7 +387,7 @@ public sealed class PopHost : IDisposable
         }
     }
 
-    private void OpenSettingsWindow()
+    public void OpenSettingsWindow()
     {
         _settingsWindow ??= CreateSettingsWindow();
         _settingsWindow.ShowOrBringToFront(_settings);
@@ -320,6 +406,31 @@ public sealed class PopHost : IDisposable
     private async Task ToggleLaunchAtStartupAsync()
     {
         await ApplySettingsAsync(_settings with { LaunchAtStartup = !_settings.LaunchAtStartup });
+    }
+
+    private void InstallPendingUpdate()
+    {
+        try
+        {
+            _updateService.ApplyPendingUpdateAndRestart();
+        }
+        catch (Exception exception)
+        {
+            LogDiagnostics(
+                "update-install",
+                "Failed to apply the pending update from the tray menu.",
+                new Dictionary<string, string?>
+                {
+                    ["error"] = exception.GetType().Name,
+                    ["message"] = exception.Message
+                });
+
+            System.Windows.MessageBox.Show(
+                $"Pop couldn't install the update.\n\n{exception.Message}",
+                "Pop Update Error",
+                System.Windows.MessageBoxButton.OK,
+                System.Windows.MessageBoxImage.Warning);
+        }
     }
 
     private async Task CheckForUpdatesAsync()
@@ -350,6 +461,7 @@ public sealed class PopHost : IDisposable
 
             _settings = settings;
             UpdateMenuState();
+            SyncDragTrackerWithSettings();
             return true;
         }
         catch (OperationCanceledException) when (_disposeCancellation.IsCancellationRequested)
@@ -365,8 +477,32 @@ public sealed class PopHost : IDisposable
 
             _settings = previousSettings;
             UpdateMenuState();
+            try
+            {
+                SyncDragTrackerWithSettings();
+            }
+            catch
+            {
+                // Re-syncing the hook after a failed save is best-effort; the error dialog below
+                // already tells the user something went wrong.
+            }
+
             ShowSettingsSaveError(exception);
             return false;
+        }
+    }
+
+    // The global mouse hook (and the per-click window inspection it triggers) should only run
+    // while Pop is enabled; Start/Stop are idempotent.
+    private void SyncDragTrackerWithSettings()
+    {
+        if (_settings.Enabled)
+        {
+            _dragTracker.Start();
+        }
+        else
+        {
+            _dragTracker.Stop();
         }
     }
 

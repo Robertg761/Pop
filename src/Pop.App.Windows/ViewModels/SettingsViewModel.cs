@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Globalization;
 using System.Runtime.CompilerServices;
 using Pop.Core.Models;
 
@@ -63,28 +64,28 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         Enabled = settings.Enabled;
         LaunchAtStartup = settings.LaunchAtStartup;
         EnableDiagnostics = settings.EnableDiagnostics;
-        ThrowVelocityThresholdText = settings.ThrowVelocityThresholdPxPerSec.ToString("0.##");
-        HorizontalDominanceRatioText = settings.HorizontalDominanceRatio.ToString("0.##");
-        GlideDurationText = settings.GlideDurationMs.ToString();
+        ThrowVelocityThresholdText = settings.ThrowVelocityThresholdPxPerSec.ToString("0.##", CultureInfo.InvariantCulture);
+        HorizontalDominanceRatioText = settings.HorizontalDominanceRatio.ToString("0.##", CultureInfo.InvariantCulture);
+        GlideDurationText = settings.GlideDurationMs.ToString(CultureInfo.InvariantCulture);
     }
 
     public bool TryBuildSettings(out AppSettings settings, out string validationMessage)
     {
         settings = new AppSettings();
 
-        if (!double.TryParse(ThrowVelocityThresholdText, out var throwVelocity) || throwVelocity < 100)
+        if (!TryParseDouble(ThrowVelocityThresholdText, out var throwVelocity) || throwVelocity < 100)
         {
             validationMessage = "Throw velocity must be a number greater than or equal to 100.";
             return false;
         }
 
-        if (!double.TryParse(HorizontalDominanceRatioText, out var dominanceRatio) || dominanceRatio < 1)
+        if (!TryParseDouble(HorizontalDominanceRatioText, out var dominanceRatio) || dominanceRatio < 1)
         {
             validationMessage = "Horizontal dominance must be a number greater than or equal to 1.";
             return false;
         }
 
-        if (!int.TryParse(GlideDurationText, out var glideDurationMs) || glideDurationMs < 50 || glideDurationMs > 1000)
+        if (!int.TryParse(GlideDurationText, NumberStyles.Integer, CultureInfo.InvariantCulture, out var glideDurationMs) || glideDurationMs < 50 || glideDurationMs > 1000)
         {
             validationMessage = "Glide duration must be an integer between 50 and 1000 milliseconds.";
             return false;
@@ -102,6 +103,18 @@ public sealed class SettingsViewModel : INotifyPropertyChanged
         };
 
         return true;
+    }
+
+    // Parse invariant (no thousands separators, so de-DE "1.75" can't become 175), but still
+    // accept a current-culture decimal comma by normalizing it to a period.
+    private static bool TryParseDouble(string text, out double value)
+    {
+        if (double.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out value))
+        {
+            return true;
+        }
+
+        return double.TryParse(text.Replace(',', '.'), NumberStyles.Float, CultureInfo.InvariantCulture, out value);
     }
 
     private void SetField<T>(ref T field, T value, [CallerMemberName] string? propertyName = null)

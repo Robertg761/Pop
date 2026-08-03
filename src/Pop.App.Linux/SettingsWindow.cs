@@ -15,6 +15,7 @@ public sealed class SettingsWindow : Window
     private AppSettings _currentSettings = AppSettings.Default;
     private readonly IUpdateService _updateService;
     private readonly CheckBox _enabledCheckBox = new();
+    private readonly CheckBox _startupCheckBox = new();
     private readonly CheckBox _diagnosticsCheckBox = new();
     private readonly TextBox _velocityTextBox = CreateNumberTextBox();
     private readonly TextBox _dominanceTextBox = CreateNumberTextBox();
@@ -25,10 +26,11 @@ public sealed class SettingsWindow : Window
         MinWidth = 72,
         TextAlignment = TextAlignment.Right
     };
+    // Range matches the AppSettings.Normalized() clamp for GlideDurationMs.
     private readonly Slider _durationSlider = new()
     {
-        Minimum = 50,
-        Maximum = 1000,
+        Minimum = 0,
+        Maximum = 5000,
         TickFrequency = 25,
         IsSnapToTickEnabled = true,
         VerticalAlignment = VerticalAlignment.Center
@@ -108,10 +110,11 @@ public sealed class SettingsWindow : Window
 
     public void ShowOrBringToFront(AppSettings settings)
     {
-        Apply(settings);
-
+        // Only re-apply the saved settings when the window is (re)opened; refreshing while it
+        // is already visible would silently discard the user's in-progress edits.
         if (!IsVisible)
         {
+            Apply(settings);
             Show();
         }
 
@@ -161,7 +164,7 @@ public sealed class SettingsWindow : Window
 
         var grid = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"),
             ColumnDefinitions = new ColumnDefinitions("180,*"),
             Margin = new Thickness(24),
             RowSpacing = 16,
@@ -170,12 +173,13 @@ public sealed class SettingsWindow : Window
 
         AddHeader(grid);
         AddFullWidth(grid, _enabledCheckBox, 2);
-        AddSettingRow(grid, 3, "Throw velocity", "Minimum horizontal release speed.", _velocityTextBox);
-        AddSettingRow(grid, 4, "Horizontal dominance", "How much more horizontal than vertical the throw must be.", _dominanceTextBox);
-        AddSettingRow(grid, 5, "Animation duration", "Higher values make snapping feel slower and smoother.", CreateDurationControl());
-        AddFullWidth(grid, _diagnosticsCheckBox, 6);
-        AddFullWidth(grid, CreateUpdateSection(), 7);
-        AddFullWidth(grid, _validationTextBlock, 8);
+        AddFullWidth(grid, _startupCheckBox, 3);
+        AddSettingRow(grid, 4, "Throw velocity", "Minimum horizontal release speed.", _velocityTextBox);
+        AddSettingRow(grid, 5, "Horizontal dominance", "How much more horizontal than vertical the throw must be.", _dominanceTextBox);
+        AddSettingRow(grid, 6, "Animation duration", "Higher values make snapping feel slower and smoother.", CreateDurationControl());
+        AddFullWidth(grid, _diagnosticsCheckBox, 7);
+        AddFullWidth(grid, CreateUpdateSection(), 8);
+        AddFullWidth(grid, _validationTextBlock, 9);
 
         var buttonPanel = new StackPanel
         {
@@ -184,7 +188,7 @@ public sealed class SettingsWindow : Window
             Spacing = 10,
             Children = { cancelButton, saveButton }
         };
-        AddFullWidth(grid, buttonPanel, 9);
+        AddFullWidth(grid, buttonPanel, 10);
 
         return new ScrollViewer
         {
@@ -325,6 +329,8 @@ public sealed class SettingsWindow : Window
         SetValidationMessage(string.Empty);
         _enabledCheckBox.Content = "Enable snapping";
         _enabledCheckBox.IsChecked = settings.Enabled;
+        _startupCheckBox.Content = "Launch Pop when you log in";
+        _startupCheckBox.IsChecked = settings.LaunchAtStartup;
         _diagnosticsCheckBox.Content = "Enable diagnostics logging";
         _diagnosticsCheckBox.IsChecked = settings.EnableDiagnostics;
         _velocityTextBox.Text = settings.ThrowVelocityThresholdPxPerSec.ToString("0.##");
@@ -383,16 +389,26 @@ public sealed class SettingsWindow : Window
 
     private void InstallUpdateButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
     {
-        _updateService.ApplyPendingUpdateAndRestart();
+        // The apply path touches the filesystem and can throw; surface the failure inline
+        // instead of letting it crash the app.
+        try
+        {
+            _updateService.ApplyPendingUpdateAndRestart();
+        }
+        catch (Exception exception)
+        {
+            _updateStatusTextBlock.Text = $"Update install failed: {exception.Message}";
+        }
     }
 
     private bool TryBuildSettings(out AppSettings settings, out string validationMessage)
     {
         settings = new AppSettings();
 
-        if (!double.TryParse(_velocityTextBox.Text, out var throwVelocity) || throwVelocity < 100)
+        // Validation limits match the AppSettings.Normalized() clamps.
+        if (!double.TryParse(_velocityTextBox.Text, out var throwVelocity) || throwVelocity < 50)
         {
-            validationMessage = "Throw velocity must be a number greater than or equal to 100.";
+            validationMessage = "Throw velocity must be a number greater than or equal to 50.";
             return false;
         }
 
@@ -403,15 +419,16 @@ public sealed class SettingsWindow : Window
         }
 
         validationMessage = string.Empty;
-        // Start from the current settings so contract fields not exposed in this UI (e.g.
-        // LaunchAtStartup) are preserved rather than reset to their defaults on every save.
+        // Start from the current settings so contract fields not exposed in this UI are
+        // preserved rather than reset to their defaults on every save.
         settings = _currentSettings with
         {
             Enabled = _enabledCheckBox.IsChecked == true,
+            LaunchAtStartup = _startupCheckBox.IsChecked == true,
             EnableDiagnostics = _diagnosticsCheckBox.IsChecked == true,
             ThrowVelocityThresholdPxPerSec = throwVelocity,
             HorizontalDominanceRatio = dominanceRatio,
-            GlideDurationMs = Math.Clamp((int)Math.Round(_durationSlider.Value), 50, 1000)
+            GlideDurationMs = Math.Clamp((int)Math.Round(_durationSlider.Value), 0, 5000)
         };
 
         return true;

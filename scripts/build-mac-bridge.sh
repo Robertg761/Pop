@@ -20,8 +20,8 @@ mkdir -p "$OUTPUT_DIR"
 
 cp "$ROOT_DIR/src/Pop.App.Mac/NativeHost/Sources/CPopMacBridge/include/PopMacBridge.h" "$OUTPUT_DIR/PopMacBridge.h"
 
-if [[ -f "$OUTPUT_DIR/PopMacBridge.dylib" && ! -f "$OUTPUT_DIR/libPopMacBridge.dylib" ]]; then
-  cp "$OUTPUT_DIR/PopMacBridge.dylib" "$OUTPUT_DIR/libPopMacBridge.dylib"
+if [[ -f "$OUTPUT_DIR/PopMacBridge.dylib" ]]; then
+  cp -f "$OUTPUT_DIR/PopMacBridge.dylib" "$OUTPUT_DIR/libPopMacBridge.dylib"
 fi
 
 if [[ -f "$OUTPUT_DIR/libPopMacBridge.dylib" ]]; then

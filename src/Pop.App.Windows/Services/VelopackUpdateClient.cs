@@ -7,8 +7,10 @@ internal sealed class VelopackUpdateClient : IUpdateClient
 {
     private readonly UpdateManager _updateManager;
 
+    // SimpleWebSource's timeout parameter is in minutes; keep it generous so full-package
+    // downloads on slow links aren't aborted mid-transfer.
     public VelopackUpdateClient()
-        : this(new UpdateManager(new SimpleWebSource(AppReleaseMetadata.UpdateFeedUrl, null, 3d), null, null))
+        : this(new UpdateManager(new SimpleWebSource(AppReleaseMetadata.UpdateFeedUrl, null, 120d), null, null))
     {
     }
 
@@ -75,8 +77,17 @@ internal sealed class VelopackUpdateClient : IUpdateClient
             return false;
         }
 
-        _updateManager.WaitExitThenApplyUpdates(pendingRelease, silent: false, restart: true);
-        return true;
+        try
+        {
+            _updateManager.WaitExitThenApplyUpdates(pendingRelease, silent: false, restart: true);
+            return true;
+        }
+        catch
+        {
+            // A failed hand-off to the Velopack updater must not crash the app; the service
+            // reports the failure so the user can re-check for updates.
+            return false;
+        }
     }
 
     private static string CreateReadyMessage(string? version)

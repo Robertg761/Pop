@@ -124,6 +124,12 @@ internal static partial class X11Native
     [DllImport("libX11.so.6")]
     public static extern XErrorHandler XSetErrorHandler(XErrorHandler handler);
 
+    [UnmanagedFunctionPointer(CallingConvention.Cdecl)]
+    public delegate int XIOErrorHandler(IntPtr display);
+
+    [DllImport("libX11.so.6")]
+    public static extern XIOErrorHandler XSetIOErrorHandler(XIOErrorHandler handler);
+
     // Xinerama is used to enumerate individual monitors on a multi-head X11 setup. It lives in a
     // separate library that may be absent; callers must handle DllNotFoundException.
     [DllImport("libXinerama.so.1")]

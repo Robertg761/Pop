@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 import Foundation
 import PopMacSupport
 
@@ -191,6 +192,7 @@ final class UpdateService: NSObject {
             }
 
             let archiveURL = try await downloadRelease(release)
+            try await verifyChecksum(ofFileAt: archiveURL, release: release)
             let preparedUpdate = try installer.prepareUpdate(fromArchiveAt: archiveURL, version: release.version)
             self.preparedUpdate = preparedUpdate
             let readyState = createReadyState(version: release.version)
@@ -231,6 +233,55 @@ final class UpdateService: NSObject {
             activeDownloadTask = task
             task.resume()
         }
+    }
+
+    private func verifyChecksum(ofFileAt fileURL: URL, release: AppRelease) async throws {
+        guard let checksumAssetURL = release.checksumAssetURL else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw UpdateInstallerError.checksumUnavailable
+        }
+
+        let checksumContents = try await releaseClient.fetchChecksumFile(at: checksumAssetURL)
+        guard let expected = Self.parseChecksum(from: checksumContents) else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw UpdateInstallerError.checksumUnavailable
+        }
+
+        let actual = try await Task.detached {
+            try Self.sha256Hex(ofFileAt: fileURL)
+        }.value
+
+        guard actual == expected else {
+            try? FileManager.default.removeItem(at: fileURL)
+            throw UpdateInstallerError.checksumMismatch(expected: expected, actual: actual)
+        }
+    }
+
+    private nonisolated static func parseChecksum(from contents: String) -> String? {
+        guard let token = contents.split(whereSeparator: { $0.isWhitespace || $0.isNewline }).first else {
+            return nil
+        }
+
+        let checksum = token.lowercased()
+        guard checksum.count == 64, checksum.allSatisfy({ $0.isHexDigit }) else {
+            return nil
+        }
+
+        return checksum
+    }
+
+    private nonisolated static func sha256Hex(ofFileAt fileURL: URL) throws -> String {
+        let handle = try FileHandle(forReading: fileURL)
+        defer {
+            try? handle.close()
+        }
+
+        var hasher = SHA256()
+        while let chunk = try handle.read(upToCount: 1_048_576), !chunk.isEmpty {
+            hasher.update(data: chunk)
+        }
+
+        return hasher.finalize().map { String(format: "%02x", $0) }.joined()
     }
 
     private func createInitialState() -> UpdateState {
@@ -406,6 +457,16 @@ struct GitHubReleaseClient {
         return try AppReleaseFeedParser.decodeLatestMacRelease(from: data)
     }
 
+    func fetchChecksumFile(at url: URL) async throws -> String {
+        let (data, response) = try await session.data(for: makeDownloadRequest(for: url))
+        try validate(response: response)
+        guard let contents = String(data: data, encoding: .utf8) else {
+            throw UpdateInstallerError.checksumUnavailable
+        }
+
+        return contents
+    }
+
     func makeDownloadRequest(for url: URL) -> URLRequest {
         var request = URLRequest(url: url)
         request.setValue("application/octet-stream", forHTTPHeaderField: "Accept")
@@ -446,6 +507,8 @@ enum UpdateInstallerError: LocalizedError {
     case backupFailed
     case sessionUnavailable
     case downloadFailed
+    case checksumUnavailable
+    case checksumMismatch(expected: String, actual: String)
     case processFailed(command: String, output: String)
 
     var errorDescription: String? {
@@ -464,6 +527,10 @@ enum UpdateInstallerError: LocalizedError {
             return "The download session is unavailable."
         case .downloadFailed:
             return "The downloaded update could not be saved."
+        case .checksumUnavailable:
+            return "The release is missing a valid SHA-256 checksum file, so the downloaded update could not be verified and was discarded."
+        case let .checksumMismatch(expected, actual):
+            return "The downloaded update failed SHA-256 verification and was discarded (expected \(expected), got \(actual))."
         case let .processFailed(command, output):
             return output.isEmpty ? "\(command) failed." : "\(command) failed: \(output)"
         }
@@ -557,6 +624,7 @@ final class PreparedUpdateInstaller {
             throw UpdateInstallerError.missingPreparedApp
         }
 
+        try verifyStagedAppSignature(at: preparedUpdate.stagedAppURL)
         try fileManager.createDirectory(at: baseDirectoryURL, withIntermediateDirectories: true)
         try installerScript.write(to: installerScriptURL, atomically: true, encoding: .utf8)
         try runProcess("/bin/chmod", arguments: ["755", installerScriptURL.path])
@@ -572,6 +640,39 @@ final class PreparedUpdateInstaller {
             metadataURL.path
         ]
         try process.run()
+    }
+
+    private func verifyStagedAppSignature(at stagedAppURL: URL) throws {
+        do {
+            try runProcess("/usr/bin/codesign", arguments: ["--verify", "--deep", "--strict", stagedAppURL.path])
+        } catch {
+            // Dev builds are ad-hoc signed and re-signed on every build, so a strict
+            // signature gate would block their updates. Log and continue in that case.
+            if isCurrentAppAdHocSigned() {
+                NSLog("Pop update: staged app failed codesign verification; continuing because the installed app is ad-hoc signed: %@", String(describing: error))
+                return
+            }
+
+            throw error
+        }
+    }
+
+    private func isCurrentAppAdHocSigned() -> Bool {
+        let process = Process()
+        let outputPipe = Pipe()
+        process.executableURL = URL(fileURLWithPath: "/usr/bin/codesign")
+        process.arguments = ["-dv", targetAppURL.path]
+        process.standardOutput = outputPipe
+        process.standardError = outputPipe
+        do {
+            try process.run()
+        } catch {
+            return true
+        }
+
+        process.waitUntilExit()
+        let output = String(data: outputPipe.fileHandleForReading.readDataToEndOfFile(), encoding: .utf8) ?? ""
+        return process.terminationStatus != 0 || output.contains("Signature=adhoc")
     }
 
     private func clearPreparedUpdate() throws {

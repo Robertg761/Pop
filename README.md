@@ -57,7 +57,7 @@ Pop currently targets a focused v1 workflow:
 Grab the latest release from the [GitHub Releases](https://github.com/Robertg761/Pop/releases) page:
 
 - **Windows**: download and run `Setup.exe`.
-- **macOS**: download `Pop-macos-arm64-<version>.zip`, unzip it, move `Pop.app` into `Applications`, then launch Pop and grant Accessibility permission when prompted.
+- **macOS**: download `Pop-macos-arm64-<version>.zip`, unzip it, move `Pop.app` into `Applications` (or `~/Applications`), then launch Pop and grant Accessibility permission when prompted. Release builds are currently **not notarized** (the project has no Apple Developer ID yet), so Gatekeeper blocks the first launch: double-click `Pop.app` once and let macOS refuse it, then open `System Settings > Privacy & Security`, scroll down, and click **Open Anyway** (on macOS 13/14 you can instead right-click `Pop.app` and choose `Open`). Alternatively clear the quarantine flag with `xattr -dr com.apple.quarantine /Applications/Pop.app`. Because unsigned builds change identity with each update, macOS also forgets the Accessibility permission after Pop updates itself — Pop prompts you to re-grant it at launch (remove the stale entry in `Privacy & Security > Accessibility` and add Pop again). A `READ ME FIRST.txt` with these steps ships inside the zip.
 - **Linux**: download `Pop-linux-x64-<version>.AppImage`, run `chmod +x Pop-linux-x64-<version>.AppImage`, then launch it (X11 sessions and Plasma Wayland via a KWin script are supported). If it is launched without a terminal, startup output is written to `~/.config/Pop/launch.log`. The release also includes a `.tar.gz` package.
 
 Once Pop is running, open `Settings` from the tray/menu-bar icon to tune behavior.
@@ -67,6 +67,10 @@ Installed builds check for updates automatically after launch and about every si
 The GitHub release page hosts the user-facing `Setup.exe`, macOS archives, and Linux packages. Windows Velopack feed files stay in the repo's `update-feed` branch so installed Windows builds can update without cluttering release assets.
 
 The Windows tray app, macOS menu-bar app, and Linux AppImage app share the same update flow: automatic background checks, manual `Check for Updates...`, download progress, and an install action once the downloaded update is ready. On macOS, in-app updates currently require Pop to be installed in a writable Applications folder such as `~/Applications`. On Linux, the AppImage must be launched from a writable location so Pop can replace it after shutdown. The macOS packaging script ad-hoc signs `Pop.app` by default and also accepts `POP_MAC_CODESIGN_IDENTITY` when you want to sign with a real certificate. Using a stable signing identity helps macOS remember Accessibility permission across launches and updates.
+
+### Verifying downloads
+
+Every release asset has a matching `<asset>.sha256` companion in `sha256sum` format. After downloading an asset and its companion into the same directory, verify it with `sha256sum -c <asset>.sha256` (Linux) or `shasum -a 256 -c <asset>.sha256` (macOS). The Linux and macOS in-app updaters also use these companions to verify downloaded updates.
 
 ## Build From Source
 
@@ -192,7 +196,7 @@ Launch-at-startup is not yet implemented on Linux.
 - `src/Pop.Core` owns snap qualification, tile math, animation plans, and restore math used by every host.
 - Managed hosts (Windows/Linux) compose `QualifiedSnapPlanner` with platform window movers; macOS calls the same Core logic through the AOT bridge.
 - The app is tray-first by design, so there is no main window on launch.
-- PR CI runs on every push/PR via `.github/workflows/ci.yml` (shared .NET tests, Windows solution tests, macOS bridge + Swift tests).
+- CI runs on pushes to `main` and on every pull request via `.github/workflows/ci.yml` (shared .NET tests, Windows solution tests, macOS bridge + Swift tests).
 - Local tests: `dotnet test tests/Pop.Tests/Pop.Tests.csproj`, `./scripts/build-mac-bridge.sh`, and `swift test --package-path src/Pop.App.Mac/NativeHost`.
 - When changing settings keys or defaults, update `contracts/app-settings.contract.json`, C# `AppSettings`, Swift `AppSettings`, and the contract tests together.
 - Shared release metadata lives in `Directory.Build.props`.

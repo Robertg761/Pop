@@ -27,6 +27,14 @@ internal static class NativeMethods
     public const uint TokenQuery = 0x0008;
     public const uint SmtoAbortIfHung = 0x0002;
 
+    // GetSystemMetrics / GetSystemMetricsForDpi indices used for the caption-band heuristic.
+    public const int SmCyCaption = 4;
+    public const int SmCxSize = 30;
+    public const int SmCxFrame = 32;
+    public const int SmCyFrame = 33;
+    public const int SmCxSmIcon = 49;
+    public const int SmCxPaddedBorder = 92;
+
     public delegate IntPtr LowLevelMouseProc(int nCode, IntPtr wParam, IntPtr lParam);
 
     [StructLayout(LayoutKind.Sequential)]
@@ -93,7 +101,7 @@ internal static class NativeMethods
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint uFlags);
 
-    [DllImport("user32.dll")]
+    [DllImport("user32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnhookWindowsHookEx(IntPtr hhk);
 
@@ -149,6 +157,25 @@ internal static class NativeMethods
 
     [DllImport("user32.dll")]
     public static extern short GetAsyncKeyState(int vKey);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool IsWindow(IntPtr hWnd);
+
+    [DllImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetCursorPos(out PointStruct lpPoint);
+
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetrics(int nIndex);
+
+    // Available from Windows 10 1607; callers must handle EntryPointNotFoundException on
+    // earlier builds and fall back to the system-DPI variants.
+    [DllImport("user32.dll")]
+    public static extern int GetSystemMetricsForDpi(int nIndex, uint dpi);
+
+    [DllImport("user32.dll")]
+    public static extern uint GetDpiForWindow(IntPtr hwnd);
 
     [DllImport("user32.dll", CharSet = CharSet.Auto)]
     [return: MarshalAs(UnmanagedType.Bool)]

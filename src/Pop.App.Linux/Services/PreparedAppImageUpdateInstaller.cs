@@ -57,14 +57,26 @@ internal sealed class PreparedAppImageUpdateInstaller
             return null;
         }
 
-        var metadata = JsonSerializer.Deserialize(
-            File.ReadAllText(MetadataPath),
-            LinuxUpdateJsonContext.Default.PreparedAppImageUpdate);
+        PreparedAppImageUpdate? metadata;
+        try
+        {
+            metadata = JsonSerializer.Deserialize(
+                File.ReadAllText(MetadataPath),
+                LinuxUpdateJsonContext.Default.PreparedAppImageUpdate);
+        }
+        catch (Exception exception) when (exception is JsonException or IOException or UnauthorizedAccessException)
+        {
+            // Corrupt or unreadable metadata must not wedge updates forever; discard it along
+            // with any orphaned staging directories and start over on the next check.
+            RemoveCorruptPreparedUpdate();
+            return null;
+        }
+
         if (metadata is null || !File.Exists(metadata.StagedAppImagePath))
         {
-            if (metadata is not null && Directory.Exists(metadata.WorkingDirectoryPath))
+            if (metadata is not null)
             {
-                Directory.Delete(metadata.WorkingDirectoryPath, recursive: true);
+                TryDeleteDirectory(metadata.WorkingDirectoryPath);
             }
 
             TryDeleteMetadata();
@@ -72,6 +84,28 @@ internal sealed class PreparedAppImageUpdateInstaller
         }
 
         return metadata;
+    }
+
+    public void CleanUpAbandonedDownloads()
+    {
+        // Staged updates are moved out of Downloads, so anything still in there is a leftover
+        // from a failed or cancelled download.
+        var downloadsDirectory = Path.Combine(_baseDirectoryPath, "Downloads");
+        if (!Directory.Exists(downloadsDirectory))
+        {
+            return;
+        }
+
+        foreach (var file in Directory.EnumerateFiles(downloadsDirectory))
+        {
+            try
+            {
+                File.Delete(file);
+            }
+            catch
+            {
+            }
+        }
     }
 
     public void RemoveObsoletePreparedUpdate(string currentVersion)
@@ -108,9 +142,11 @@ internal sealed class PreparedAppImageUpdateInstaller
 
         var preparedUpdate = new PreparedAppImageUpdate(version, stagedAppImagePath, workingDirectoryPath);
         Directory.CreateDirectory(_baseDirectoryPath);
+        var temporaryMetadataPath = $"{MetadataPath}.tmp";
         File.WriteAllText(
-            MetadataPath,
+            temporaryMetadataPath,
             JsonSerializer.Serialize(preparedUpdate, LinuxUpdateJsonContext.Default.PreparedAppImageUpdate));
+        File.Move(temporaryMetadataPath, MetadataPath, overwrite: true);
         return preparedUpdate;
     }
 
@@ -126,7 +162,8 @@ internal sealed class PreparedAppImageUpdateInstaller
         MakeExecutable(InstallerScriptPath);
 
         using var process = new Process();
-        process.StartInfo.FileName = "/bin/bash";
+        process.StartInfo.FileName = "/usr/bin/env";
+        process.StartInfo.ArgumentList.Add(File.Exists("/bin/bash") || File.Exists("/usr/bin/bash") ? "bash" : "sh");
         process.StartInfo.ArgumentList.Add(InstallerScriptPath);
         process.StartInfo.ArgumentList.Add(Environment.ProcessId.ToString());
         process.StartInfo.ArgumentList.Add(_targetAppImagePath);
@@ -139,19 +176,61 @@ internal sealed class PreparedAppImageUpdateInstaller
     private void ClearPreparedUpdate()
     {
         var preparedUpdate = LoadPreparedUpdate();
-        if (preparedUpdate is not null && Directory.Exists(preparedUpdate.WorkingDirectoryPath))
+        if (preparedUpdate is not null)
         {
-            Directory.Delete(preparedUpdate.WorkingDirectoryPath, recursive: true);
+            TryDeleteDirectory(preparedUpdate.WorkingDirectoryPath);
         }
 
         TryDeleteMetadata();
     }
 
+    private void RemoveCorruptPreparedUpdate()
+    {
+        TryDeleteMetadata();
+
+        // The metadata can no longer tell us which staging directory it referenced, so sweep
+        // every staging directory (everything under the base directory except Downloads).
+        if (!Directory.Exists(_baseDirectoryPath))
+        {
+            return;
+        }
+
+        foreach (var directory in Directory.EnumerateDirectories(_baseDirectoryPath))
+        {
+            if (string.Equals(Path.GetFileName(directory), "Downloads", StringComparison.Ordinal))
+            {
+                continue;
+            }
+
+            TryDeleteDirectory(directory);
+        }
+    }
+
     private void TryDeleteMetadata()
     {
-        if (File.Exists(MetadataPath))
+        try
         {
-            File.Delete(MetadataPath);
+            if (File.Exists(MetadataPath))
+            {
+                File.Delete(MetadataPath);
+            }
+        }
+        catch
+        {
+        }
+    }
+
+    private static void TryDeleteDirectory(string directoryPath)
+    {
+        try
+        {
+            if (Directory.Exists(directoryPath))
+            {
+                Directory.Delete(directoryPath, recursive: true);
+            }
+        }
+        catch
+        {
         }
     }
 
@@ -192,16 +271,22 @@ internal sealed class PreparedAppImageUpdateInstaller
 
     private static void MakeExecutable(string path)
     {
-        using var process = new Process();
-        process.StartInfo.FileName = "/bin/chmod";
-        process.StartInfo.ArgumentList.Add("755");
-        process.StartInfo.ArgumentList.Add(path);
-        process.Start();
-        process.WaitForExit();
-
-        if (process.ExitCode != 0)
+        if (!OperatingSystem.IsLinux())
         {
-            throw new InvalidOperationException($"chmod failed for {path}.");
+            return;
+        }
+
+        try
+        {
+            File.SetUnixFileMode(
+                path,
+                UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute
+                | UnixFileMode.GroupRead | UnixFileMode.GroupExecute
+                | UnixFileMode.OtherRead | UnixFileMode.OtherExecute);
+        }
+        catch (Exception exception) when (exception is IOException or UnauthorizedAccessException or PlatformNotSupportedException)
+        {
+            throw new InvalidOperationException($"Couldn't mark {path} as executable.", exception);
         }
     }
 
@@ -211,8 +296,8 @@ internal sealed class PreparedAppImageUpdateInstaller
 
     private static string InstallerScript =>
         """
-        #!/usr/bin/env bash
-        set -euo pipefail
+        #!/bin/sh
+        set -eu
 
         APP_PID="$1"
         TARGET_APP="$2"
@@ -221,12 +306,32 @@ internal sealed class PreparedAppImageUpdateInstaller
         METADATA_FILE="$5"
         BACKUP_APP="${TARGET_APP}.previous"
 
+        # Capture the process start time so a recycled PID isn't mistaken for the app.
+        read_start_time() {
+          sed 's/^.*) //' "/proc/$APP_PID/stat" 2>/dev/null | awk '{print $20}' || true
+        }
+
+        APP_START_TIME="$(read_start_time)"
+
+        # Wait for the app to exit, but give up after ~120s; the prepared update stays
+        # staged so it can be applied on a later attempt.
+        WAITED_TICKS=0
         while kill -0 "$APP_PID" 2>/dev/null; do
+          if [ -n "$APP_START_TIME" ]; then
+            CURRENT_START_TIME="$(read_start_time)"
+            if [ "$CURRENT_START_TIME" != "$APP_START_TIME" ]; then
+              break
+            fi
+          fi
+          if [ "$WAITED_TICKS" -ge 600 ]; then
+            exit 1
+          fi
+          WAITED_TICKS=$((WAITED_TICKS + 1))
           sleep 0.2
         done
 
         rm -f "$BACKUP_APP"
-        if [[ -e "$TARGET_APP" ]]; then
+        if [ -e "$TARGET_APP" ]; then
           mv "$TARGET_APP" "$BACKUP_APP"
         fi
 
@@ -235,7 +340,7 @@ internal sealed class PreparedAppImageUpdateInstaller
           rm -f "$BACKUP_APP"
         else
           rm -f "$TARGET_APP"
-          if [[ -e "$BACKUP_APP" ]]; then
+          if [ -e "$BACKUP_APP" ]; then
             mv "$BACKUP_APP" "$TARGET_APP"
           fi
           exit 1

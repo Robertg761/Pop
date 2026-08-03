@@ -12,6 +12,7 @@ internal sealed class UpdateService : IUpdateService
     private readonly CancellationTokenSource _disposeCancellation = new();
     private readonly SemaphoreSlim _checkGate = new(1, 1);
     private readonly object _activeCheckSync = new();
+    private readonly object _stateSync = new();
     private int _activeCheckCount;
     private TaskCompletionSource<bool> _allChecksCompleted = CreateCompletedCheckSignal();
 
@@ -66,7 +67,7 @@ internal sealed class UpdateService : IUpdateService
     {
         if (!_updateClient.PreparePendingUpdateAndRestart())
         {
-            PublishState(CreateInitialState());
+            PublishState(CreatePendingUpdateUnavailableState());
             return;
         }
 
@@ -139,6 +140,7 @@ internal sealed class UpdateService : IUpdateService
 
             try
             {
+                var previousState = CurrentState;
                 PublishState(CreateCheckingState());
 
                 UpdateDownloadResult result;
@@ -148,6 +150,8 @@ internal sealed class UpdateService : IUpdateService
                 }
                 catch (OperationCanceledException) when (effectiveCancellation.IsCancellationRequested)
                 {
+                    // Restore a terminal state so the Check button isn't left disabled.
+                    PublishState(CreateStateAfterCancelledCheck(previousState));
                     return;
                 }
                 catch (Exception exception)
@@ -189,14 +193,16 @@ internal sealed class UpdateService : IUpdateService
 
     private void OnDownloadProgress(UpdateDownloadProgress progress)
     {
-        PublishState(new UpdateState(
-            UpdateStatus.Downloading,
-            _updateClient.CurrentVersion,
-            CreateDownloadMessage(progress.TargetVersion, progress.Percentage),
-            progress.TargetVersion,
-            Math.Clamp(progress.Percentage, 0, 100),
-            CanCheck: false,
-            CanInstall: false));
+        PublishStateCore(
+            new UpdateState(
+                UpdateStatus.Downloading,
+                _updateClient.CurrentVersion,
+                CreateDownloadMessage(progress.TargetVersion, progress.Percentage),
+                progress.TargetVersion,
+                Math.Clamp(progress.Percentage, 0, 100),
+                CanCheck: false,
+                CanInstall: false),
+            progressOnly: true);
     }
 
     private UpdateState CreateInitialState()
@@ -264,6 +270,28 @@ internal sealed class UpdateService : IUpdateService
             CanInstall: true);
     }
 
+    private UpdateState CreateStateAfterCancelledCheck(UpdateState previousState)
+    {
+        return previousState.Status is UpdateStatus.Checking or UpdateStatus.Downloading
+            ? CreateInitialState()
+            : previousState;
+    }
+
+    private UpdateState CreatePendingUpdateUnavailableState()
+    {
+        if (!_updateClient.IsSupported)
+        {
+            return CreateUnsupportedState();
+        }
+
+        return new UpdateState(
+            UpdateStatus.Error,
+            _updateClient.CurrentVersion,
+            "The downloaded update is no longer available. Check for updates to download it again.",
+            CanCheck: true,
+            CanInstall: false);
+    }
+
     private static string CreateDownloadMessage(string? version, int percentage)
     {
         var clampedPercentage = Math.Clamp(percentage, 0, 100);
@@ -279,15 +307,27 @@ internal sealed class UpdateService : IUpdateService
             : $"Update v{version} is ready to install.";
     }
 
-    private void PublishState(UpdateState state)
-    {
-        if (Equals(CurrentState, state))
-        {
-            return;
-        }
+    private void PublishState(UpdateState state) => PublishStateCore(state, progressOnly: false);
 
-        CurrentState = state;
-        StateChanged?.Invoke(this, new UpdateStateChangedEventArgs(state));
+    private void PublishStateCore(UpdateState state, bool progressOnly)
+    {
+        // Velopack progress callbacks arrive on download threads; serialize publishes so a
+        // late progress update can't overwrite the final state of the operation.
+        lock (_stateSync)
+        {
+            if (progressOnly && CurrentState.Status is not (UpdateStatus.Checking or UpdateStatus.Downloading))
+            {
+                return;
+            }
+
+            if (Equals(CurrentState, state))
+            {
+                return;
+            }
+
+            CurrentState = state;
+            StateChanged?.Invoke(this, new UpdateStateChangedEventArgs(state));
+        }
     }
 
     private void BeginTrackedCheck()

@@ -78,6 +78,36 @@ public sealed class QualifiedSnapPlannerTests
         Assert.Equal(adjusted, plan.AnimationPlan.FinalBounds);
     }
 
+    [Theory]
+    [InlineData(0, 1040)]
+    [InlineData(1920, -1040)]
+    public void TryCreatePlan_ReturnsFalse_WhenTargetWorkAreaIsDegenerate(int width, int height)
+    {
+        var degenerateMonitor = new MonitorInfo(
+            new Rectangle(100, 0, 1920, 1080),
+            new Rectangle(100, 0, width, height));
+        var planner = CreatePlanner();
+        var session = CreateSession((400, 80, 0), (120, 95, 100));
+        var decision = new SnapDecision(
+            SnapTarget.LeftHalf,
+            degenerateMonitor,
+            new Point(120, 95),
+            -2800,
+            150,
+            10,
+            true,
+            SnapRejectionReason.None);
+
+        var created = planner.TryCreatePlan(
+            session,
+            decision,
+            TestSettings,
+            static (_, tile) => tile,
+            out _);
+
+        Assert.False(created);
+    }
+
     private static QualifiedSnapPlanner CreatePlanner()
         => new(new SnapDecider(_ => MainMonitor));
 

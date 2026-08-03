@@ -152,7 +152,7 @@ private extension AppSettings {
             launchAtStartup: launchAtStartup ? 1 : 0,
             throwVelocityThresholdPxPerSec: throwVelocityThresholdPxPerSec,
             horizontalDominanceRatio: horizontalDominanceRatio,
-            glideDurationMs: Int32(glideDurationMs),
+            glideDurationMs: Int32(clamping: glideDurationMs),
             enableDiagnostics: enableDiagnostics ? 1 : 0)
     }
 }

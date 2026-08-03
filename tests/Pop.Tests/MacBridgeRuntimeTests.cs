@@ -106,6 +106,37 @@ public sealed class MacBridgeRuntimeTests
     }
 
     [Fact]
+    public void EvaluateDragGestureManaged_NormalizesOutOfRangeSettings()
+    {
+        var origin = DateTimeOffset.UtcNow;
+        var samples = new[]
+        {
+            new PopDragSampleDto(1600, 200, origin.ToUnixTimeMilliseconds()),
+            new PopDragSampleDto(2100, 210, origin.AddMilliseconds(50).ToUnixTimeMilliseconds()),
+            new PopDragSampleDto(2500, 220, origin.AddMilliseconds(100).ToUnixTimeMilliseconds())
+        };
+        var monitors = new[] { MainMonitor, RightMonitor };
+        var context = new PopDragContextDto(
+            MainMonitor,
+            MainMonitor,
+            new PopRectDto(1450, 100, 900, 700),
+            new PopRectDto(2050, 100, 900, 700),
+            isOptionPressedAtRelease: 1);
+        var corruptSettings = new PopAppSettingsDto(
+            enabled: 1,
+            launchAtStartup: 0,
+            throwVelocityThresholdPxPerSec: double.NaN,
+            horizontalDominanceRatio: 0,
+            glideDurationMs: -100,
+            enableDiagnostics: 0);
+
+        var decision = MacBridgeRuntime.EvaluateDragGestureManaged(samples, monitors, context, corruptSettings);
+
+        Assert.Equal(1, decision.IsQualified);
+        Assert.Equal((int)SnapTarget.RightHalf, decision.Target);
+    }
+
+    [Fact]
     public void GetTileBoundsManaged_SplitsOddMonitorWidth()
     {
         var monitor = new PopMonitorInfoDto(

@@ -304,6 +304,14 @@ function connectWindow(window) {
 
     window.__popConnected = true;
 
+    // The per-window interactiveMoveResize* signals are Plasma 6 API; skip windows that do not
+    // expose them instead of throwing.
+    if (typeof window.interactiveMoveResizeStarted === "undefined" ||
+        typeof window.interactiveMoveResizeStepped === "undefined" ||
+        typeof window.interactiveMoveResizeFinished === "undefined") {
+        return;
+    }
+
     window.interactiveMoveResizeStarted.connect(function () {
         if (window.resize || !isEligibleWindow(window)) {
             return;
@@ -330,7 +338,15 @@ function connectWindow(window) {
     });
 }
 
-workspace.windowAdded.connect(connectWindow);
-workspace.stackingOrder.forEach(connectWindow);
-
-print("Pop Wayland KWin script loaded as " + POP_PLUGIN_ID);
+// workspace.windowAdded/stackingOrder are the Plasma 6 scripting API; Plasma 5 exposes
+// clientAdded/clients instead, so it would load this script and then throw. Bail out with a
+// clear message so the failure is diagnosable from the KWin log instead of silent.
+if (typeof workspace === "undefined" ||
+    typeof workspace.windowAdded === "undefined" ||
+    typeof workspace.stackingOrder === "undefined") {
+    print("Pop: this KWin does not provide the Plasma 6 scripting API; Pop's Wayland integration requires KDE Plasma 6 or newer.");
+} else {
+    workspace.windowAdded.connect(connectWindow);
+    workspace.stackingOrder.forEach(connectWindow);
+    print("Pop Wayland KWin script loaded as " + POP_PLUGIN_ID);
+}

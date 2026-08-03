@@ -6,11 +6,14 @@ namespace Pop.App.Windows;
 public partial class App : System.Windows.Application
 {
     private const string SingleInstanceMutexName = @"Local\Pop.SingleInstance";
+    private const string ShowSettingsEventName = @"Local\Pop.ShowSettings";
 
     // Held for the process lifetime; releasing it lets a second instance start.
     private static Mutex? _singleInstanceMutex;
 
     private PopHost? _host;
+    private EventWaitHandle? _showSettingsEvent;
+    private RegisteredWaitHandle? _showSettingsWaitRegistration;
 
     [STAThread]
     public static void Main(string[] args)
@@ -18,9 +21,11 @@ public partial class App : System.Windows.Application
         VelopackApp.Build().Run();
 
         _singleInstanceMutex = new Mutex(initiallyOwned: true, SingleInstanceMutexName, out var createdNew);
-        if (!createdNew)
+        if (!createdNew && !TryAcquireExistingInstanceMutex(_singleInstanceMutex))
         {
-            // Another Pop instance already owns the tray icon and the global mouse hook.
+            // Another Pop instance already owns the tray icon and the global mouse hook;
+            // nudge it to show its Settings window instead of exiting silently.
+            SignalRunningInstanceToShowSettings();
             return;
         }
 
@@ -29,13 +34,66 @@ public partial class App : System.Windows.Application
         app.Run();
     }
 
+    // An update restart (or a fast relaunch) can start the new process while the previous one
+    // is still shutting down, so wait briefly for the mutex before concluding a live instance
+    // owns it.
+    private static bool TryAcquireExistingInstanceMutex(Mutex mutex)
+    {
+        try
+        {
+            return mutex.WaitOne(TimeSpan.FromSeconds(3));
+        }
+        catch (AbandonedMutexException)
+        {
+            // The previous instance died without releasing the mutex; ownership is ours now.
+            return true;
+        }
+    }
+
+    private static void SignalRunningInstanceToShowSettings()
+    {
+        try
+        {
+            if (EventWaitHandle.TryOpenExisting(ShowSettingsEventName, out var showSettingsEvent))
+            {
+                using (showSettingsEvent)
+                {
+                    showSettingsEvent.Set();
+                }
+            }
+        }
+        catch
+        {
+            // Best effort — the running instance may be mid-startup or mid-shutdown.
+        }
+    }
+
     protected override void OnStartup(System.Windows.StartupEventArgs e)
     {
         DispatcherUnhandledException += OnDispatcherUnhandledException;
         AppDomain.CurrentDomain.UnhandledException += OnAppDomainUnhandledException;
         System.Threading.Tasks.TaskScheduler.UnobservedTaskException += OnUnobservedTaskException;
 
+        StartShowSettingsListener();
         StartHost(e);
+    }
+
+    private void StartShowSettingsListener()
+    {
+        try
+        {
+            _showSettingsEvent = new EventWaitHandle(false, EventResetMode.AutoReset, ShowSettingsEventName);
+            _showSettingsWaitRegistration = ThreadPool.RegisterWaitForSingleObject(
+                _showSettingsEvent,
+                (_, _) => Dispatcher.BeginInvoke(() => _host?.OpenSettingsWindow()),
+                null,
+                Timeout.Infinite,
+                executeOnlyOnce: false);
+        }
+        catch
+        {
+            // The second-instance nudge is best-effort; Pop still runs without it.
+        }
     }
 
     private async void StartHost(System.Windows.StartupEventArgs e)
@@ -61,6 +119,8 @@ public partial class App : System.Windows.Application
 
     protected override void OnExit(System.Windows.ExitEventArgs e)
     {
+        _showSettingsWaitRegistration?.Unregister(null);
+        _showSettingsEvent?.Dispose();
         _host?.Dispose();
         base.OnExit(e);
     }

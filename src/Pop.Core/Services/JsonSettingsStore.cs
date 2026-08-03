@@ -27,7 +27,10 @@ public sealed class JsonSettingsStore(string? settingsDirectory = null, string f
                 return AppSettings.Default;
             }
 
-            await using var stream = File.OpenRead(SettingsPath);
+            // FileShare.Delete keeps a concurrent SaveAsync's File.Replace from throwing
+            // IOException on Windows while this read holds the file open.
+            await using var stream = new FileStream(
+                SettingsPath, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
             var settings = await JsonSerializer.DeserializeAsync(stream, PopJsonContext.Default.AppSettings, cancellationToken);
             return (settings ?? AppSettings.Default).Normalized();
         }
@@ -59,13 +62,24 @@ public sealed class JsonSettingsStore(string? settingsDirectory = null, string f
                 await using (var stream = File.Create(temporaryPath))
                 {
                     await JsonSerializer.SerializeAsync(stream, settings, PopJsonContext.Default.AppSettings, cancellationToken);
-                    await stream.FlushAsync(cancellationToken);
+                    // flushToDisk pushes past the OS page cache so a crash or power loss
+                    // right after the rename cannot leave a zero-length settings file.
+                    stream.Flush(flushToDisk: true);
                 }
 
                 if (File.Exists(SettingsPath) && OperatingSystem.IsWindows())
                 {
-                    File.Replace(temporaryPath, SettingsPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
-                    return;
+                    try
+                    {
+                        File.Replace(temporaryPath, SettingsPath, destinationBackupFileName: null, ignoreMetadataErrors: true);
+                        return;
+                    }
+                    catch (Exception exception) when (exception is IOException or UnauthorizedAccessException)
+                    {
+                        // Replace fails if the destination is held open without delete sharing
+                        // or was deleted after the exists check. Fall through to Move so the
+                        // freshly serialized settings are not discarded.
+                    }
                 }
 
                 File.Move(temporaryPath, SettingsPath, overwrite: true);

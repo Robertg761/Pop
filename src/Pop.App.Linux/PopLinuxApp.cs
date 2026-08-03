@@ -6,8 +6,8 @@ using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
 using Avalonia.Threading;
-using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Pop.App.Linux.Platform;
 using Pop.App.Linux.Services;
 using Pop.Core.Models;
 
@@ -24,6 +24,8 @@ public sealed class PopLinuxApp : Application
     private NativeMenuItem? _installUpdateMenuItem;
     private UpdateState _lastUpdateState;
     private string? _lastNotifiedReadyVersion;
+    private PosixSignalRegistration? _sigTermRegistration;
+    private PosixSignalRegistration? _sigIntRegistration;
 
     public PopLinuxApp()
     {
@@ -42,10 +44,16 @@ public sealed class PopLinuxApp : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
+            // SIGTERM/SIGINT (session logout, kill) must run the same orderly shutdown path as
+            // Quit so the KWin script is unloaded and the update service is disposed.
+            _sigTermRegistration = PosixSignalRegistration.Create(PosixSignal.SIGTERM, OnPosixShutdownSignal);
+            _sigIntRegistration = PosixSignalRegistration.Create(PosixSignal.SIGINT, OnPosixShutdownSignal);
             desktop.Exit += (_, _) =>
             {
                 _updateService.Dispose();
                 _host?.Dispose();
+                _sigTermRegistration?.Dispose();
+                _sigIntRegistration?.Dispose();
             };
         }
 
@@ -62,13 +70,40 @@ public sealed class PopLinuxApp : Application
             ConfigureTrayIcon();
             ConfigureUpdates();
             await _updateService.StartAsync();
+
+            if (_host.UnsupportedSessionMessage is string unsupportedSessionMessage)
+            {
+                // Snapping can't work in this session; say so instead of silently no-opping,
+                // and open the settings window so the app is visibly running.
+                Console.Error.WriteLine(unsupportedSessionMessage);
+                DesktopNotifier.TryNotify("Pop can't snap windows in this session", unsupportedSessionMessage);
+                ShowSettingsWindow();
+            }
+            else if (!await StatusNotifierHostDetector.IsHostAvailableAsync())
+            {
+                // Without a tray host (e.g. stock GNOME) the tray-only app would be invisible
+                // and uncontrollable; the settings window keeps it reachable.
+                ShowSettingsWindow();
+            }
+
             Console.WriteLine("Pop for Linux is running.");
         }
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Pop couldn't start: {exception.Message}");
+            // When launched from a .desktop entry stderr goes nowhere; a desktop notification
+            // is the only visible trace of the failure.
+            DesktopNotifier.TryNotify("Pop couldn't start", exception.Message);
             Shutdown();
         }
+    }
+
+    private void OnPosixShutdownSignal(PosixSignalContext context)
+    {
+        // Cancel the default immediate termination, then request an orderly shutdown on the UI
+        // thread so desktop.Exit cleanup runs.
+        context.Cancel = true;
+        Dispatcher.UIThread.Post(Shutdown);
     }
 
     private void ConfigureTrayIcon()
@@ -88,7 +123,7 @@ public sealed class PopLinuxApp : Application
         {
             IsVisible = false
         };
-        _installUpdateMenuItem.Click += (_, _) => _updateService.ApplyPendingUpdateAndRestart();
+        _installUpdateMenuItem.Click += (_, _) => InstallPendingUpdate();
 
         var quitItem = new NativeMenuItem("Quit");
         quitItem.Click += (_, _) => Shutdown();
@@ -143,6 +178,22 @@ public sealed class PopLinuxApp : Application
         catch (Exception exception)
         {
             Console.Error.WriteLine($"Pop update check failed: {exception.Message}");
+            DesktopNotifier.TryNotify("Pop update check failed", exception.Message);
+        }
+    }
+
+    private void InstallPendingUpdate()
+    {
+        // The apply path touches the filesystem and can throw; a crash here would take the
+        // whole app down from a menu click.
+        try
+        {
+            _updateService.ApplyPendingUpdateAndRestart();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Pop couldn't install the update: {exception.Message}");
+            DesktopNotifier.TryNotify("Pop update failed", exception.Message);
         }
     }
 
@@ -224,17 +275,7 @@ public sealed class PopLinuxApp : Application
             ? "Restart Pop to finish installing the downloaded update."
             : $"Restart Pop to install v{state.AvailableVersion}.";
 
-        try
-        {
-            var startInfo = new ProcessStartInfo("notify-send")
-            {
-                UseShellExecute = false
-            };
-            startInfo.ArgumentList.Add("Pop update ready");
-            startInfo.ArgumentList.Add(message);
-            Process.Start(startInfo);
-        }
-        catch
+        if (!DesktopNotifier.TryNotify("Pop update ready", message))
         {
             Console.WriteLine($"Pop update ready. {message}");
         }

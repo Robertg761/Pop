@@ -47,10 +47,16 @@ EOF
 
 tar -C "$(dirname "$STAGE_DIR")" -czf "$TAR_PATH" "$(basename "$STAGE_DIR")"
 
-mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/256x256/apps"
+APP_ICON="$ROOT_DIR/artifacts/branding/pop-badge-512.png"
+if [[ ! -f "$APP_ICON" ]]; then
+  echo "Missing app icon: $APP_ICON" >&2
+  exit 1
+fi
+
+mkdir -p "$APPDIR/usr/bin" "$APPDIR/usr/share/applications" "$APPDIR/usr/share/icons/hicolor/512x512/apps"
 cp -a "$PUBLISH_DIR"/. "$APPDIR/usr/bin"/
-cp "$ROOT_DIR/official_icon.png" "$APPDIR/pop.png"
-cp "$ROOT_DIR/official_icon.png" "$APPDIR/usr/share/icons/hicolor/256x256/apps/pop.png"
+cp "$APP_ICON" "$APPDIR/pop.png"
+cp "$APP_ICON" "$APPDIR/usr/share/icons/hicolor/512x512/apps/pop.png"
 cat > "$APPDIR/AppRun" <<'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
@@ -68,6 +74,9 @@ config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
 log_dir="$config_home/Pop"
 log_path="$log_dir/launch.log"
 
+# The desktop entry uses Terminal=false, so desktop launches have no tty and
+# fall through to the logged path below. A tty only exists when Pop is run
+# from a terminal by hand; keep output there in that case.
 if [[ -t 1 || -t 2 ]]; then
   exec "$POP_BIN" "$@"
 fi
@@ -76,13 +85,14 @@ mkdir -p "$log_dir"
 echo "[$(date --iso-8601=seconds)] Starting Pop from AppImage." >> "$log_path"
 notify "Pop is running. Launch output is logged to $log_path."
 
-"$POP_BIN" "$@" >> "$log_path" 2>&1
-exit_code=$?
-if [[ $exit_code -eq 0 ]]; then
-  exit 0
+# Capture the app's exit status without letting set -e abort this script,
+# so the failure notification below is reachable.
+exit_code=0
+"$POP_BIN" "$@" >> "$log_path" 2>&1 || exit_code=$?
+if [[ $exit_code -ne 0 ]]; then
+  notify "Pop could not start. See $log_path for details."
 fi
 
-notify "Pop could not start. See $log_path for details."
 exit "$exit_code"
 EOF
 chmod +x "$APPDIR/AppRun"
@@ -94,7 +104,7 @@ Name=Pop
 Comment=Momentum-based window snapping
 Exec=Pop
 Icon=pop
-Terminal=true
+Terminal=false
 Categories=Utility;
 EOF
 cp "$APPDIR/pop.desktop" "$APPDIR/usr/share/applications/pop.desktop"
@@ -103,9 +113,10 @@ if [[ ! -x "$APPIMAGETOOL" ]]; then
   # Prefer a pinned, immutable release over the moving 'continuous' tag so the tool that runs
   # inside this write-token job cannot be swapped underneath us. AppImageKit is deprecated and
   # its tag-13 assets were renamed with an 'obsolete-' prefix, so try the current asset name
-  # first, the pre-rename name second, and the maintained repo's continuous build as a last
-  # resort. Set APPIMAGETOOL_URL to force a specific source, and APPIMAGETOOL_SHA256 to enforce
-  # integrity of whatever gets downloaded (recommended); if unset the build only warns.
+  # first and the pre-rename name second. The maintained repo's moving continuous build is a
+  # last resort for local builds only and is never tried in CI. Set APPIMAGETOOL_URL to force a
+  # specific source, and APPIMAGETOOL_SHA256 to enforce integrity of whatever gets downloaded;
+  # the checksum is mandatory in CI (CI=true) and only warns when unset locally.
   APPIMAGETOOL_TAG="${APPIMAGETOOL_TAG:-13}"
   if [[ -n "${APPIMAGETOOL_URL:-}" ]]; then
     candidate_urls=("$APPIMAGETOOL_URL")
@@ -113,8 +124,10 @@ if [[ ! -x "$APPIMAGETOOL" ]]; then
     candidate_urls=(
       "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/obsolete-appimagetool-x86_64.AppImage"
       "https://github.com/AppImage/AppImageKit/releases/download/${APPIMAGETOOL_TAG}/appimagetool-x86_64.AppImage"
-      "https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage"
     )
+    if [[ "${CI:-}" != "true" ]]; then
+      candidate_urls+=("https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage")
+    fi
   fi
 
   downloaded=""
@@ -136,6 +149,9 @@ if [[ ! -x "$APPIMAGETOOL" ]]; then
   if [[ -n "${APPIMAGETOOL_SHA256:-}" ]]; then
     echo "${APPIMAGETOOL_SHA256}  ${APPIMAGETOOL}" | sha256sum --check --status \
       || { echo "appimagetool checksum verification failed." >&2; exit 1; }
+  elif [[ "${CI:-}" == "true" ]]; then
+    echo "ERROR: APPIMAGETOOL_SHA256 must be set in CI so an unverified appimagetool is never executed." >&2
+    exit 1
   else
     echo "WARNING: APPIMAGETOOL_SHA256 is not set; skipping appimagetool integrity check." >&2
     echo "Downloaded appimagetool sha256: $(sha256sum "$APPIMAGETOOL" | cut -d' ' -f1)" >&2

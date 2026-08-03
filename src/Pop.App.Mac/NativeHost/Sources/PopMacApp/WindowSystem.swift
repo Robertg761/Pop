@@ -11,6 +11,10 @@ struct WindowInspection {
 
 @MainActor
 final class AccessibilityWindowSystem {
+    // AX calls into a hung app block the caller for ~6 seconds by default; keep the
+    // main thread responsive by capping per-element messaging time.
+    private static let axMessagingTimeoutSeconds: Float = 0.5
+
     private let screenCoordinator: ScreenCoordinator
     private let currentProcessIdentifier: pid_t
 
@@ -22,8 +26,13 @@ final class AccessibilityWindowSystem {
     func inspectWindow(atEventLocation location: CGPoint) -> WindowInspection {
         let point = screenCoordinator.pointInTopLeftSpace(from: location)
         let systemWide = AXUIElementCreateSystemWide()
+        AXUIElementSetMessagingTimeout(systemWide, Self.axMessagingTimeoutSeconds)
         var element: AXUIElement?
         let error = AXUIElementCopyElementAtPosition(systemWide, Float(location.x), Float(location.y), &element)
+        if let hitElement = element {
+            AXUIElementSetMessagingTimeout(hitElement, Self.axMessagingTimeoutSeconds)
+        }
+
         guard error == .success, let hitElement = element, let window = windowElement(from: hitElement), let bounds = bounds(for: window) else {
             return WindowInspection(window: nil, bounds: DesktopRect(x: 0, y: 0, width: 0, height: 0), monitor: nil, isSupported: false, reason: "No eligible window was found under the pointer.")
         }
@@ -76,17 +85,32 @@ final class AccessibilityWindowSystem {
         return (bounds, screenCoordinator.monitor(containing: bounds))
     }
 
-    func move(window: AXUIElement, to rect: DesktopRect) {
+    @discardableResult
+    func move(window: AXUIElement, to rect: DesktopRect) -> Bool {
         var position = screenCoordinator.axPoint(fromTopLeftRect: rect)
         var size = CGSize(width: rect.width, height: rect.height)
+        var success = true
 
         if let positionValue = AXValueCreate(.cgPoint, &position) {
-            AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue)
+            success = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) == .success && success
+        } else {
+            success = false
         }
 
         if let sizeValue = AXValueCreate(.cgSize, &size) {
-            AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue)
+            success = AXUIElementSetAttributeValue(window, kAXSizeAttribute as CFString, sizeValue) == .success && success
+        } else {
+            success = false
         }
+
+        // Re-apply the position after resizing: some apps shift the window while applying
+        // the new size (notably across monitors with different scales), and the known AX
+        // pattern for reliable cross-monitor moves is position, size, position.
+        if let positionValue = AXValueCreate(.cgPoint, &position) {
+            success = AXUIElementSetAttributeValue(window, kAXPositionAttribute as CFString, positionValue) == .success && success
+        }
+
+        return success
     }
 
     private func windowElement(from element: AXUIElement) -> AXUIElement? {
@@ -121,7 +145,9 @@ final class AccessibilityWindowSystem {
             return nil
         }
 
-        return (value as! AXUIElement)
+        let copiedElement = value as! AXUIElement
+        AXUIElementSetMessagingTimeout(copiedElement, Self.axMessagingTimeoutSeconds)
+        return copiedElement
     }
 
     private func stringAttribute(_ attribute: String, from element: AXUIElement) -> String? {
