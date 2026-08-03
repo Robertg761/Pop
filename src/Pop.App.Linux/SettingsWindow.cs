@@ -3,6 +3,8 @@ using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Layout;
 using Avalonia.Media;
+using Avalonia.Threading;
+using Pop.App.Linux.Services;
 using Pop.Core.Models;
 
 namespace Pop.App.Linux;
@@ -11,6 +13,7 @@ public sealed class SettingsWindow : Window
 {
     private readonly Func<AppSettings, Task<bool>> _saveSettingsAsync;
     private AppSettings _currentSettings = AppSettings.Default;
+    private readonly IUpdateService _updateService;
     private readonly CheckBox _enabledCheckBox = new();
     private readonly CheckBox _diagnosticsCheckBox = new();
     private readonly TextBox _velocityTextBox = CreateNumberTextBox();
@@ -36,17 +39,56 @@ public sealed class SettingsWindow : Window
         TextWrapping = TextWrapping.Wrap,
         IsVisible = false
     };
+    private readonly TextBlock _currentVersionTextBlock = new()
+    {
+        FontWeight = FontWeight.SemiBold
+    };
+    private readonly TextBlock _updateStatusTextBlock = new()
+    {
+        TextWrapping = TextWrapping.Wrap,
+        Foreground = Brushes.Gray
+    };
+    private readonly StackPanel _updateProgressPanel = new()
+    {
+        Spacing = 6,
+        IsVisible = false
+    };
+    private readonly ProgressBar _updateProgressBar = new()
+    {
+        Minimum = 0,
+        Maximum = 100,
+        Height = 10
+    };
+    private readonly TextBlock _updateProgressTextBlock = new()
+    {
+        Text = "0% downloaded",
+        Foreground = Brushes.Gray
+    };
+    private readonly Button _checkUpdatesButton = new()
+    {
+        Content = "Check Now",
+        MinWidth = 108,
+        HorizontalContentAlignment = HorizontalAlignment.Center
+    };
+    private readonly Button _installUpdateButton = new()
+    {
+        Content = "Install Update",
+        MinWidth = 124,
+        HorizontalContentAlignment = HorizontalAlignment.Center,
+        IsVisible = false
+    };
 
     private bool _allowClose;
 
-    public SettingsWindow(AppSettings settings, Func<AppSettings, Task<bool>> saveSettingsAsync)
+    internal SettingsWindow(AppSettings settings, IUpdateService updateService, Func<AppSettings, Task<bool>> saveSettingsAsync)
     {
         _saveSettingsAsync = saveSettingsAsync;
+        _updateService = updateService;
         Title = "Pop Settings";
         Width = 560;
-        Height = 460;
+        Height = 620;
         MinWidth = 500;
-        MinHeight = 420;
+        MinHeight = 560;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         Icon = PopLinuxApp.LoadTrayIcon();
         Content = BuildContent();
@@ -60,6 +102,8 @@ public sealed class SettingsWindow : Window
         };
 
         Apply(settings);
+        _updateService.StateChanged += OnUpdateStateChanged;
+        ApplyUpdateState(_updateService.CurrentState);
     }
 
     public void ShowOrBringToFront(AppSettings settings)
@@ -80,6 +124,7 @@ public sealed class SettingsWindow : Window
 
     public void ClosePermanently()
     {
+        _updateService.StateChanged -= OnUpdateStateChanged;
         _allowClose = true;
         Close();
     }
@@ -116,7 +161,7 @@ public sealed class SettingsWindow : Window
 
         var grid = new Grid
         {
-            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,*,Auto,Auto"),
+            RowDefinitions = new RowDefinitions("Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto,Auto"),
             ColumnDefinitions = new ColumnDefinitions("180,*"),
             Margin = new Thickness(24),
             RowSpacing = 16,
@@ -129,7 +174,8 @@ public sealed class SettingsWindow : Window
         AddSettingRow(grid, 4, "Horizontal dominance", "How much more horizontal than vertical the throw must be.", _dominanceTextBox);
         AddSettingRow(grid, 5, "Animation duration", "Higher values make snapping feel slower and smoother.", CreateDurationControl());
         AddFullWidth(grid, _diagnosticsCheckBox, 6);
-        AddFullWidth(grid, _validationTextBlock, 7);
+        AddFullWidth(grid, CreateUpdateSection(), 7);
+        AddFullWidth(grid, _validationTextBlock, 8);
 
         var buttonPanel = new StackPanel
         {
@@ -138,7 +184,7 @@ public sealed class SettingsWindow : Window
             Spacing = 10,
             Children = { cancelButton, saveButton }
         };
-        AddFullWidth(grid, buttonPanel, 8);
+        AddFullWidth(grid, buttonPanel, 9);
 
         return new ScrollViewer
         {
@@ -232,6 +278,47 @@ public sealed class SettingsWindow : Window
         };
     }
 
+    private Control CreateUpdateSection()
+    {
+        _checkUpdatesButton.Click += CheckUpdatesButton_OnClick;
+        _installUpdateButton.Click += InstallUpdateButton_OnClick;
+
+        _updateProgressPanel.Children.Add(_updateProgressBar);
+        _updateProgressPanel.Children.Add(_updateProgressTextBlock);
+
+        var actionPanel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            Spacing = 10,
+            Children = { _checkUpdatesButton, _installUpdateButton }
+        };
+
+        return new Border
+        {
+            BorderThickness = new Thickness(1),
+            BorderBrush = Brushes.LightGray,
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14),
+            Child = new StackPanel
+            {
+                Spacing = 10,
+                Children =
+                {
+                    new TextBlock
+                    {
+                        Text = "Updates",
+                        FontWeight = FontWeight.SemiBold,
+                        FontSize = 16
+                    },
+                    _currentVersionTextBlock,
+                    _updateStatusTextBlock,
+                    _updateProgressPanel,
+                    actionPanel
+                }
+            }
+        };
+    }
+
     private void Apply(AppSettings settings)
     {
         _currentSettings = settings;
@@ -282,6 +369,23 @@ public sealed class SettingsWindow : Window
         }
     }
 
+    private async void CheckUpdatesButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        try
+        {
+            await _updateService.CheckNowAsync();
+        }
+        catch (Exception exception)
+        {
+            _updateStatusTextBlock.Text = $"Update check failed: {exception.Message}";
+        }
+    }
+
+    private void InstallUpdateButton_OnClick(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        _updateService.ApplyPendingUpdateAndRestart();
+    }
+
     private bool TryBuildSettings(out AppSettings settings, out string validationMessage)
     {
         settings = new AppSettings();
@@ -317,6 +421,43 @@ public sealed class SettingsWindow : Window
     {
         _durationValueTextBlock.Text = $"{Math.Round(_durationSlider.Value):0} ms";
         Grid.SetColumn(_durationValueTextBlock, 1);
+    }
+
+    private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            ApplyUpdateState(e.State);
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplyUpdateState(e.State));
+    }
+
+    internal void ApplyUpdateState(UpdateState state)
+    {
+        _currentVersionTextBlock.Text = $"Version {state.CurrentVersion}";
+        _updateStatusTextBlock.Text = state.Message;
+        _checkUpdatesButton.IsEnabled = state.CanCheck || state.Status == UpdateStatus.Unsupported;
+
+        if (state.Status == UpdateStatus.Downloading && state.DownloadProgressPercent is int progress)
+        {
+            _updateProgressPanel.IsVisible = true;
+            _updateProgressBar.Value = progress;
+            _updateProgressTextBlock.Text = $"{progress}% downloaded";
+        }
+        else
+        {
+            _updateProgressPanel.IsVisible = false;
+            _updateProgressBar.Value = 0;
+            _updateProgressTextBlock.Text = "0% downloaded";
+        }
+
+        _installUpdateButton.IsVisible = state.CanInstall;
+        _installUpdateButton.IsEnabled = state.CanInstall;
+        _installUpdateButton.Content = state.CanInstall && !string.IsNullOrWhiteSpace(state.AvailableVersion)
+            ? $"Install v{state.AvailableVersion}"
+            : "Install Update";
     }
 
     private void SetValidationMessage(string message)

@@ -36,10 +36,13 @@ through a KWin script.
 Run:
   ./Pop
 
-The app watches title-bar drag gestures and exits on Ctrl+C. The current Linux
-build is terminal-first and does not have a tray icon or settings window yet.
-Settings, diagnostics, and AppImage launch logs are stored under
-$XDG_CONFIG_HOME/Pop, or ~/.config/Pop when XDG_CONFIG_HOME is unset.
+The app watches title-bar drag gestures and exposes settings from its tray icon.
+Settings, diagnostics, staged AppImage updates, and AppImage launch logs are
+stored under $XDG_CONFIG_HOME/Pop, or ~/.config/Pop when XDG_CONFIG_HOME is
+unset.
+
+In-app updates are available when Pop is launched from the AppImage in a writable
+location. Tarball builds can be updated manually from GitHub Releases.
 EOF
 
 tar -C "$(dirname "$STAGE_DIR")" -czf "$TAR_PATH" "$(basename "$STAGE_DIR")"

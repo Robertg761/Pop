@@ -1,4 +1,4 @@
-namespace Pop.App.Windows.Services;
+namespace Pop.App.Linux.Services;
 
 internal sealed class UpdateService : IUpdateService
 {
@@ -18,7 +18,6 @@ internal sealed class UpdateService : IUpdateService
     private Task? _backgroundTask;
     private CancellationTokenSource? _backgroundCancellation;
     private bool _started;
-    private volatile bool _disposed;
 
     public UpdateService(
         IUpdateClient? updateClient = null,
@@ -26,8 +25,8 @@ internal sealed class UpdateService : IUpdateService
         TimeSpan? initialDelay = null,
         TimeSpan? checkInterval = null)
     {
-        _updateClient = updateClient ?? new VelopackUpdateClient();
-        _shutdownHandler = shutdownHandler ?? new WpfAppShutdownHandler();
+        _updateClient = updateClient ?? new AppImageUpdateClient();
+        _shutdownHandler = shutdownHandler ?? new DelegateAppShutdownHandler(() => Environment.Exit(0));
         _initialDelay = initialDelay ?? DefaultInitialDelay;
         _checkInterval = checkInterval ?? DefaultCheckInterval;
 
@@ -75,18 +74,8 @@ internal sealed class UpdateService : IUpdateService
 
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
-        _disposed = true;
         _backgroundCancellation?.Cancel();
         _disposeCancellation.Cancel();
-
-        // Let the background loop (and any in-flight check it is running) observe cancellation
-        // and unwind before disposing the primitives it uses, so we don't race it into an
-        // ObjectDisposedException.
         var checksCompleted = GetChecksCompletedTask();
         var checksStopped = TryWaitForCompletion(checksCompleted);
 
@@ -124,11 +113,6 @@ internal sealed class UpdateService : IUpdateService
 
     private async Task CheckForUpdatesInternalAsync(CancellationToken cancellationToken)
     {
-        if (_disposed)
-        {
-            return;
-        }
-
         BeginTrackedCheck();
         try
         {
@@ -136,7 +120,6 @@ internal sealed class UpdateService : IUpdateService
             var effectiveCancellation = linkedCancellation.Token;
 
             await _checkGate.WaitAsync(effectiveCancellation);
-
             try
             {
                 PublishState(CreateCheckingState());

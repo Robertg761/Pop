@@ -5,16 +5,31 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using Avalonia.Styling;
 using Avalonia.Themes.Fluent;
+using Avalonia.Threading;
+using System.Diagnostics;
 using System.Runtime.InteropServices;
+using Pop.App.Linux.Services;
 using Pop.Core.Models;
 
 namespace Pop.App.Linux;
 
 public sealed class PopLinuxApp : Application
 {
+    private readonly UpdateService _updateService;
     private LinuxPopHost? _host;
     private SettingsWindow? _settingsWindow;
     private TrayIcon? _trayIcon;
+    private NativeMenuItem? _updateStatusMenuItem;
+    private NativeMenuItem? _checkForUpdatesMenuItem;
+    private NativeMenuItem? _installUpdateMenuItem;
+    private UpdateState _lastUpdateState;
+    private string? _lastNotifiedReadyVersion;
+
+    public PopLinuxApp()
+    {
+        _updateService = new UpdateService(shutdownHandler: new DelegateAppShutdownHandler(Shutdown));
+        _lastUpdateState = _updateService.CurrentState;
+    }
 
     public override void Initialize()
     {
@@ -27,7 +42,11 @@ public sealed class PopLinuxApp : Application
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
-            desktop.Exit += (_, _) => _host?.Dispose();
+            desktop.Exit += (_, _) =>
+            {
+                _updateService.Dispose();
+                _host?.Dispose();
+            };
         }
 
         InitializeAsync();
@@ -41,6 +60,8 @@ public sealed class PopLinuxApp : Application
             _host = new LinuxPopHost();
             await _host.InitializeAsync();
             ConfigureTrayIcon();
+            ConfigureUpdates();
+            await _updateService.StartAsync();
             Console.WriteLine("Pop for Linux is running.");
         }
         catch (Exception exception)
@@ -55,6 +76,20 @@ public sealed class PopLinuxApp : Application
         var settingsItem = new NativeMenuItem("Settings");
         settingsItem.Click += (_, _) => ShowSettingsWindow();
 
+        _updateStatusMenuItem = new NativeMenuItem("Updates: Starting...")
+        {
+            IsEnabled = false
+        };
+
+        _checkForUpdatesMenuItem = new NativeMenuItem("Check for Updates");
+        _checkForUpdatesMenuItem.Click += async (_, _) => await CheckForUpdatesAsync();
+
+        _installUpdateMenuItem = new NativeMenuItem("Install Update")
+        {
+            IsVisible = false
+        };
+        _installUpdateMenuItem.Click += (_, _) => _updateService.ApplyPendingUpdateAndRestart();
+
         var quitItem = new NativeMenuItem("Quit");
         quitItem.Click += (_, _) => Shutdown();
 
@@ -68,6 +103,10 @@ public sealed class PopLinuxApp : Application
                 {
                     settingsItem,
                     new NativeMenuItemSeparator(),
+                    _updateStatusMenuItem,
+                    _checkForUpdatesMenuItem,
+                    _installUpdateMenuItem,
+                    new NativeMenuItemSeparator(),
                     quitItem
                 }
             },
@@ -78,6 +117,12 @@ public sealed class PopLinuxApp : Application
         TrayIcon.SetIcons(this, new TrayIcons { _trayIcon });
     }
 
+    private void ConfigureUpdates()
+    {
+        _updateService.StateChanged += OnUpdateStateChanged;
+        ApplyUpdateState(_updateService.CurrentState);
+    }
+
     private void ShowSettingsWindow()
     {
         if (_host is null)
@@ -85,8 +130,20 @@ public sealed class PopLinuxApp : Application
             return;
         }
 
-        _settingsWindow ??= new SettingsWindow(_host.Settings, SaveSettingsAsync);
+        _settingsWindow ??= new SettingsWindow(_host.Settings, _updateService, SaveSettingsAsync);
         _settingsWindow.ShowOrBringToFront(_host.Settings);
+    }
+
+    private async Task CheckForUpdatesAsync()
+    {
+        try
+        {
+            await _updateService.CheckNowAsync();
+        }
+        catch (Exception exception)
+        {
+            Console.Error.WriteLine($"Pop update check failed: {exception.Message}");
+        }
     }
 
     private async Task<bool> SaveSettingsAsync(AppSettings settings)
@@ -98,6 +155,89 @@ public sealed class PopLinuxApp : Application
 
         await _host.SaveSettingsAsync(settings);
         return true;
+    }
+
+    private void OnUpdateStateChanged(object? sender, UpdateStateChangedEventArgs e)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            ApplyUpdateState(e.State);
+            return;
+        }
+
+        Dispatcher.UIThread.Post(() => ApplyUpdateState(e.State));
+    }
+
+    private void ApplyUpdateState(UpdateState state)
+    {
+        var previousState = _lastUpdateState;
+        _lastUpdateState = state;
+
+        if (_updateStatusMenuItem is not null)
+        {
+            _updateStatusMenuItem.Header = GetUpdateMenuText(state);
+        }
+
+        if (_checkForUpdatesMenuItem is not null)
+        {
+            _checkForUpdatesMenuItem.IsEnabled = state.CanCheck || state.Status == UpdateStatus.Unsupported;
+        }
+
+        if (_installUpdateMenuItem is not null)
+        {
+            _installUpdateMenuItem.IsVisible = state.CanInstall;
+            _installUpdateMenuItem.IsEnabled = state.CanInstall;
+            _installUpdateMenuItem.Header = state.CanInstall && !string.IsNullOrWhiteSpace(state.AvailableVersion)
+                ? $"Install Update v{state.AvailableVersion}"
+                : "Install Update";
+        }
+
+        if (state.Status == UpdateStatus.ReadyToInstall
+            && !string.Equals(_lastNotifiedReadyVersion, state.AvailableVersion, StringComparison.Ordinal)
+            && previousState.Status != UpdateStatus.ReadyToInstall)
+        {
+            _lastNotifiedReadyVersion = state.AvailableVersion;
+            ShowUpdateReadyNotification(state);
+        }
+
+        if (state.Status != UpdateStatus.ReadyToInstall)
+        {
+            _lastNotifiedReadyVersion = null;
+        }
+    }
+
+    private static string GetUpdateMenuText(UpdateState state)
+    {
+        return state.Status switch
+        {
+            UpdateStatus.Downloading when state.DownloadProgressPercent is int progress =>
+                $"Updates: Downloading {progress}%",
+            UpdateStatus.ReadyToInstall when !string.IsNullOrWhiteSpace(state.AvailableVersion) =>
+                $"Updates: Ready to install v{state.AvailableVersion}",
+            _ => $"Updates: {state.Message}"
+        };
+    }
+
+    private static void ShowUpdateReadyNotification(UpdateState state)
+    {
+        var message = string.IsNullOrWhiteSpace(state.AvailableVersion)
+            ? "Restart Pop to finish installing the downloaded update."
+            : $"Restart Pop to install v{state.AvailableVersion}.";
+
+        try
+        {
+            var startInfo = new ProcessStartInfo("notify-send")
+            {
+                UseShellExecute = false
+            };
+            startInfo.ArgumentList.Add("Pop update ready");
+            startInfo.ArgumentList.Add(message);
+            Process.Start(startInfo);
+        }
+        catch
+        {
+            Console.WriteLine($"Pop update ready. {message}");
+        }
     }
 
     public static WindowIcon? LoadTrayIcon()

@@ -10,6 +10,7 @@ public sealed class KWinWaylandIntegration : IDisposable
 {
     private const string PluginName = "pop-wayland";
     private const string ScriptResourceName = "Pop.App.Linux.Platform.KWin.pop-wayland.js";
+    private static readonly TimeSpan GdbusTimeout = TimeSpan.FromSeconds(2);
     private readonly string _scriptPath = Path.Combine(LinuxPaths.ConfigDirectory, "kwin", "pop-wayland.js");
 
     public static bool IsCandidateSession()
@@ -57,9 +58,14 @@ public sealed class KWinWaylandIntegration : IDisposable
 
     public void Dispose()
     {
+        using var cancellation = new CancellationTokenSource(GdbusTimeout);
         try
         {
-            RunGdbusAsync(CancellationToken.None, allowFailure: true, "call", "--session",
+            RunGdbusAsync(
+                cancellation.Token,
+                allowFailure: true,
+                "call",
+                "--session",
                 "--dest", "org.kde.KWin",
                 "--object-path", "/Scripting",
                 "--method", "org.kde.kwin.Scripting.unloadScript",
@@ -92,6 +98,9 @@ public sealed class KWinWaylandIntegration : IDisposable
         bool allowFailure,
         params string[] arguments)
     {
+        using var timeout = new CancellationTokenSource(GdbusTimeout);
+        using var linkedCancellation = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, timeout.Token);
+
         var startInfo = new ProcessStartInfo
         {
             FileName = "gdbus",
@@ -128,7 +137,26 @@ public sealed class KWinWaylandIntegration : IDisposable
         using var _ = process;
         var standardOutput = process.StandardOutput.ReadToEndAsync(cancellationToken);
         var standardError = process.StandardError.ReadToEndAsync(cancellationToken);
-        await process.WaitForExitAsync(cancellationToken);
+
+        try
+        {
+            await process.WaitForExitAsync(linkedCancellation.Token);
+        }
+        catch (OperationCanceledException) when (linkedCancellation.Token.IsCancellationRequested)
+        {
+            if (!process.HasExited)
+            {
+                try
+                {
+                    process.Kill(entireProcessTree: true);
+                }
+                catch
+                {
+                }
+            }
+
+            throw;
+        }
 
         if (process.ExitCode == 0 || allowFailure)
         {

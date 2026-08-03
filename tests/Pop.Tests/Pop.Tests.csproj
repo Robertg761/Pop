@@ -24,6 +24,7 @@
   <ItemGroup>
     <ProjectReference Include="..\..\src\Pop.Core\Pop.Core.csproj" />
     <ProjectReference Include="..\..\src\Pop.App.Mac\Pop.App.Mac.csproj" />
+    <ProjectReference Include="..\..\src\Pop.App.Linux\Pop.App.Linux.csproj" />
   </ItemGroup>
 
 </Project>

@@ -117,7 +117,9 @@ if ($UploadToGitHub) {
     $assetsToDelete = @($releaseData.assets | Where-Object {
         $_.name -ne $setupAsset.Name -and
         $_.name -notlike 'Pop-macos-arm64-*.zip' -and
-        $_.name -notlike 'Pop-macos-arm64-*.dmg'
+        $_.name -notlike 'Pop-macos-arm64-*.dmg' -and
+        $_.name -notlike 'Pop-linux-x64-*.AppImage' -and
+        $_.name -notlike 'Pop-linux-x64-*.tar.gz'
     })
     foreach ($asset in $assetsToDelete) {
         & gh release delete-asset $releaseTag $asset.name --repo $repoSlug --yes
