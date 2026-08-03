@@ -4,7 +4,8 @@ Promotional images and demo video for Pop.
 
 | File | Purpose |
 | --- | --- |
-| `pop-hero.png` | Hero banner (2560×1280). Also sized for the GitHub social preview (Settings → Social preview). |
+| `pop-hero.png` | Hero banner (2560×1280), embedded in the root README. |
+| `pop-hero-social.jpg` | Compressed 1280×640 variant for the GitHub social preview (Settings → Social preview, 1 MB limit). |
 | `pop-demo.gif` | Animated demo embedded in the root README. |
 | `pop-demo.mp4` | Same demo as H.264 video — use this when sharing outside GitHub. |
 | `pop-snap-left.png` | Still: mid-flick, window gliding into the left half. |
