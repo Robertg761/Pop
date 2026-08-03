@@ -271,7 +271,7 @@ final class UpdateService: NSObject {
     }
 
     private nonisolated static func sha256Hex(ofFileAt fileURL: URL) throws -> String {
-        let handle = try FileHandle(forReading: fileURL)
+        let handle = try FileHandle(forReadingFrom: fileURL)
         defer {
             try? handle.close()
         }
