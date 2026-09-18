@@ -1,5 +1,7 @@
 # Pop
 
+[![Commit Archive 2026](https://commitarchive.lol/badge/2026/Robertg761/Pop.svg)](https://commitarchive.lol/2026/Robertg761/Pop)
+
 <p align="center">
   <img src="docs/media/pop-hero.png" alt="Pop — momentum window snapping" width="820">
 </p>
